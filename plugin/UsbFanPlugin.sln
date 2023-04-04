@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33516.290
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UsbFanPlugin", "UsbFanPlugin\UsbFanPlugin.csproj", "{AF7BDF4F-2DD4-49CE-8545-07248B885542}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UsbFanPlugin_Test", "UsbFanPlugin_Test\UsbFanPlugin_Test.csproj", "{F44DFA87-4569-4E13-882A-3ACD1C1E7557}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AF7BDF4F-2DD4-49CE-8545-07248B885542}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF7BDF4F-2DD4-49CE-8545-07248B885542}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF7BDF4F-2DD4-49CE-8545-07248B885542}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF7BDF4F-2DD4-49CE-8545-07248B885542}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F44DFA87-4569-4E13-882A-3ACD1C1E7557}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F44DFA87-4569-4E13-882A-3ACD1C1E7557}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F44DFA87-4569-4E13-882A-3ACD1C1E7557}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F44DFA87-4569-4E13-882A-3ACD1C1E7557}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5F7D2404-D0F2-4BEF-99C3-0EA807031E5C}
+	EndGlobalSection
+EndGlobal

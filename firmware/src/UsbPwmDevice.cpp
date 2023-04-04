@@ -59,8 +59,8 @@ int UsbPwmDevice::getInterface(uint8_t* interfaceCount)
     return USB_SendControl(0, &iface, sizeof(iface));
 }
 
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 0
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 1
 static const uint8_t version[2] PROGMEM = { VERSION_MINOR, VERSION_MAJOR };
 
 //
