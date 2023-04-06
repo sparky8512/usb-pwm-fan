@@ -70,13 +70,34 @@ pio run --target upload
 
 Will hopefully have an easier mechanism for this soon.
 
+## Tools
+
+The [utils](utils) directory has some [Python](https://www.python.org/) scripts that can be used to interact with USB devices running this project's firmware.
+
+### Installation
+
+ To install their prerequisites, in that directory, you can run:
+```shell script
+python -m pip -r requirements.txt
+```
+This should work on most platforms, but if you have a more exotic setup, you may need to skip the `libusb-package` package and install [`pyusb`](https://github.com/pyusb/pyusb) by hand, including whatever backend is appropriate for your system.
+
+To run as non-root user on Linux, you will probably also have to open up device permissions, see the [pyusb FAQ](https://github.com/pyusb/pyusb/blob/master/docs/faq.rst#how-to-practically-deal-with-permission-issues-on-linux) for more info.
+
+### usb_fan_config.py
+
+`usb_fan_config.py` can perform most operations that are available in the USB device firmware, including setting fan speed, getting tachometer reading, and various configuration settings. For usage details, you can run:
+```shell script
+python usb_fan_config.py
+```
+
 ## FanControl plugin
 
 The [plugin](plugin) directory has the source code for a plugin to Rémi Mercier's [Fan Control](https://getfancontrol.com/) program that will allow it to access fans connected to USB devices running this project's firmware. Note that this is a Windows-only application.
 
 ### Installation
 
-Binary releases of the plugin can be found in the Releases section of this repository.
+Binary releases of the plugin can be found in the [Releases](releases) section of this repository.
 
 To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Plugins` directory of your FanControl installation. If it doesn't detect your USB device, there may be useful messages in Fan Control log file, which is located in the FanControl installation directory.
 
@@ -84,7 +105,7 @@ To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Pl
 
 Things that may happen at some point of the future:
 * Better documentation... *much* better documentation
-* Python script for configuration and status
+* ~~Python script for configuration and status~~
 * Python script for firmware upload
 * Workflow actions for builds
 * Firmware features
