@@ -1,0 +1,23 @@
+name: Fan Control plugin build
+
+on: workflow_dispatch
+
+jobs:  
+  build:    
+    runs-on: windows-2019
+    
+    steps:      
+      - uses: actions/checkout@v3
+      
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Build solution
+        run: msbuild.exe UsbFanPlugin.sln /p:platform="Any CPU" /p:configuration="Release"
+        working-directory: ./plugin
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: plugin
+          path: ./plugin/UsbFanPlugin/bin/Release/FanControl.UsbFanPlugin.dll
+          retention-days: 7
