@@ -8,12 +8,18 @@ jobs:
     
     steps:      
       - uses: actions/checkout@v3
-      
+ 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1.1
 
+      - name: Fetch prerequisites
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Rem0o/FanControl.Releases/blob/master/FanControl.zip?raw=true -OutFile FanControl.zip
+          7z e FanControl.zip FanControl.Plugins.dll
+        working-directory: ./plugin
+
       - name: Build solution
-        run: msbuild.exe UsbFanPlugin.sln /p:platform="Any CPU" /p:configuration="Release"
+        run: msbuild.exe UsbFanPlugin.sln -property:platform="Any CPU" -property:configuration="Release"
         working-directory: ./plugin
 
       - uses: actions/upload-artifact@v3
