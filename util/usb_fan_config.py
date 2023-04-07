@@ -25,6 +25,8 @@ except ModuleNotFoundError:
     except ModuleNotFoundError:
         sys.exit("Must install libusb-package and/or pyusb packages")
 
+import atmega32u4_upload
+
 DEVICE_UUID = "{1ad9f93b-494c-4dda-a1e5-2e2bab181052}"
 DEVICE_MAJOR = 0
 DEVICE_MINOR = 1
@@ -116,6 +118,18 @@ class UsbFanDevice(FanDevice):
 
     def write_register(self, reg, value):
         self._dev.ctrl_transfer(0x41, reg, value, self._iface, 0)
+
+
+class FanDeviceRebooter:
+
+    def __init__(self, dev):
+        self._dev = dev
+
+    def __call__(self):
+        try:
+            self._dev.write_register(0xf0, 3)
+        except Exception as ex:
+            sys.exit("Error requesting bootloader reboot: " + str(ex))
 
 
 class UuidFinder:
@@ -222,6 +236,11 @@ def read_register_command(dev, opts):
     print(dev.read_register(opts.register, buflen))
 
 
+def upload_command(dev, opts):
+    reboot = FanDeviceRebooter(dev)
+    atmega32u4_upload.upload_firmware(opts, reboot)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="USB fan device configuration")
     parser.add_argument("-i", "--index", type=int, help="0-based index of device to use")
@@ -273,6 +292,10 @@ def parse_args():
     subparser.add_argument("register", type=int, help="Register number to read", metavar="REG")
     subparser.set_defaults(command_func=read_register_command, header=True)
 
+    subparser = command_parsers.add_parser("upload", help="Upload firmware to device")
+    atmega32u4_upload.argparse_core_args(subparser)
+    subparser.set_defaults(command_func=upload_command, header=False)
+
     opts = parser.parse_args()
 
     if opts.serial_port is not None:
@@ -291,6 +314,8 @@ def parse_args():
             opts.value = int(opts.value)
         except ValueError:
             parser.error("Register {} requires an int value".format(opts.register))
+    if opts.command_func == upload_command:  # pylint: disable=comparison-with-callable
+        atmega32u4_upload.check_core_args(opts, parser.error)
 
     return opts
 

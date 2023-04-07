@@ -62,17 +62,13 @@ Finally, connect `GND` (Ground) from your microcontroller board to the ground pi
 
 ### Uploading the firmware
 
-While there are stand-alone tools that can upload .hex files to these microcontroller boards, the command line for doing so is a bit involved, so for now, the easiest way to upload firmware is to [install PlatformIO Core CLI](https://docs.platformio.org/en/latest/core/installation/index.html) and use it to build and upload the firmware:
-```shell script
-pio run
-pio run --target upload
-```
+Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board.
 
-Will hopefully have an easier mechanism for this soon.
+Once you have a firmware file to upload, you can use the `atmega32u4_upload.py` tool to upload it if your board is not already running firmware from this project. If your board is already running firmware from this project, you can use either that tool or the `upload` command of the `usb_fan_config.py` tool. See details for those tools below.
 
 ## Tools
 
-The [utils](utils) directory has some [Python](https://www.python.org/) scripts that can be used to interact with USB devices running this project's firmware.
+The [util](util) directory has some [Python](https://www.python.org/) scripts that can be used to interact with USB devices running this project's firmware.
 
 ### Installation
 
@@ -88,8 +84,25 @@ To run as non-root user on Linux, you will probably also have to open up device 
 
 `usb_fan_config.py` can perform most operations that are available in the USB device firmware, including setting fan speed, getting tachometer reading, and various configuration settings. For usage details, you can run:
 ```shell script
-python usb_fan_config.py
+python usb_fan_config.py --help
 ```
+
+### atmega32u4_upload.py
+
+`atmega32u4_upload.py` can be used to upload firmware to an ATmega32U4-based development board, assuming it uses the Caterina bootloader, which most Arduino-focussed development boards do. This script is mostly just a wrapper around [AVRDUDE](https://github.com/avrdudes/avrdude), so you will need to install that somewhere and if it's not in PATH, let the script know where you put it.
+
+For full usage details, you can run:
+```shell script
+python atmega32u4_upload.py --help
+```
+
+There are 4 main operating modes for this script:
+1) If you already have firmware from this project running on your development board, you can invoke this script by running `usb_fan_config.py` with the `upload` command. This will avoid the need to specify which serial port the USB device is on.
+2) If you have some other Arduino firmware installed, you can run this script directly and use the `--port` option to specify which serial port the device shows up as. Alternatively, you can use the `--serial-number` option to have the script identify which serial port to use by the USB device serial number.
+3) If option 2 doesn't work, maybe because it's running some non-Arduino firmware or the firmware has disabled the USB serial port, you will have to manually reboot into the bootloader, which can be done by driving the reset line on the board (normally labelled `RST`) low (connect to `GND`) briefly. Some boards have a button that you can press for this. In any event, you should do this _after_ you have started `atmega32u4_upload.py` with the `--manual-reboot` option.
+4) If the bootloader serial port auto-detect logic is not working for some reason, or you just don't want to wait for the script to start before initiating manual reboot, you can use the `--bootloader-port` option to specify which serial port the bootloader is using. In this mode, the bootloader must already be running before you start the script.
+
+If your development board uses a different bootloader than Caterina, you will need to use an upload tool specific to that bootloader.
 
 ## FanControl plugin
 
@@ -97,7 +110,7 @@ The [plugin](plugin) directory has the source code for a plugin to Rémi Mercier
 
 ### Installation
 
-Binary releases of the plugin can be found in the [Releases](releases) section of this repository.
+Binary releases of the plugin can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository.
 
 To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Plugins` directory of your FanControl installation. If it doesn't detect your USB device, there may be useful messages in Fan Control log file, which is located in the FanControl installation directory.
 
@@ -106,7 +119,7 @@ To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Pl
 Things that may happen at some point of the future:
 * Better documentation... *much* better documentation
 * ~~Python script for configuration and status~~
-* Python script for firmware upload
+* ~~Python script for firmware upload~~
 * Workflow actions for builds
 * Firmware features
   * Extend for multiple fans
