@@ -34,7 +34,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="FanControl.Plugins">
-      <HintPath>..\..\..\..\..\..\..\Program Files\FanControl\FanControl.Plugins.dll</HintPath>
+      <HintPath>..\FanControl.Plugins.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />

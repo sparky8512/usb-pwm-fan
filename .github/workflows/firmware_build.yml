@@ -1,6 +1,19 @@
-name: PlatformIO firmware build
+name: Firmware build
 
-on: workflow_dispatch
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/firmware_build.yml'
+      - 'firmware/**'
+  pull_request:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/firmware_build.yml'
+      - 'firmware/**'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,11 +37,14 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Build PlatformIO project
-        run: pio run
+        run: pio run -v
         working-directory: ./firmware
 
       - uses: actions/upload-artifact@v3
         with:
           name: firmware
-          path: ./firmware/.pio/build/leonardo/firmware.hex
+          path: |
+            ./firmware/.pio/build/beetle/firmware.hex
+            ./firmware/.pio/build/leonardo/firmware.hex
+            ./firmware/.pio/build/promicro16/firmware.hex
           retention-days: 7

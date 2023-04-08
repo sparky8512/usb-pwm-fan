@@ -185,6 +185,10 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
             new_tccr1a = 0b00000010;    // COM1A[1:0] = 00, WGM1[1:0] = 10
         }
         if (pending_tccr1a != new_tccr1a) {
+            if (value) {
+                // Fan was not running before, so prime the stall detection
+                pulse_times[pulse_index] = micros();
+            }
             // TCCR1A is not double-buffered the way OCR1A is, so defer
             // update to the end of this PWM period.
             pending_tccr1a = new_tccr1a;
@@ -245,7 +249,7 @@ bool UsbPwmDevice::checkStall()
     cli();
     if (pending_tccr1a & 0b10000000) {
         unsigned long check_time = pulse_times[pulse_index];
-        if (pulse_delta == 0 || micros() - check_time > 1000000) {
+        if (pulse_delta == 0 || micros() - check_time > 500000) {
             stalled = true;
         }
     }
