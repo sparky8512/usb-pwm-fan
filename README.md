@@ -121,7 +121,7 @@ Things that may happen at some point of the future:
 * Better documentation... *much* better documentation
 * ~~Python script for configuration and status~~
 * ~~Python script for firmware upload~~
-* Workflow actions for builds
+* ~~Workflow actions for builds~~
 * Firmware features
   * Extend for multiple fans
   * Save default configuration to EEPROM, restore on boot
