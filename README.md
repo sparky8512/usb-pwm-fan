@@ -1,6 +1,7 @@
 # usb-pwm-fan
 
-PLEASE NOTE THAT THIS DOCUMENT IS A WORK IN PROGRESS, AS IS THIS PROJECT AS A WHOLE.
+![firmware build](https://github.com/sparky8512/usb-pwm-fan/actions/workflows/firmware_build.yml/badge.svg)
+![plugin build](https://github.com/sparky8512/usb-pwm-fan/actions/workflows/plugin_build.yml/badge.svg)
 
 This repository contains microcontroller firmware for a USB device that can set the speed of an attached fan. It does this by using the fan's PWM (Pulse Width Modulation) input, and can also read back its current rotational speed from its tachometer output. It is designed to work with standard PC case or CPU fans.
 
@@ -62,7 +63,7 @@ Finally, connect `GND` (Ground) from your microcontroller board to the ground pi
 
 ### Uploading the firmware
 
-Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board.
+Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board. There are currently files for 3 different board types: `beetle`, `leonardo`, and `promicro16`. If your board has "Pro Micro" printed on it, it's probably a Sparkfun Pro Micro clone; otherwise, it's probably closer to Leonardo. The Beetle firmware is the same as the Leonardo firmware except it uses the [DFRobot Beetle](https://www.dfrobot.com/product-1075.html) VID/PID in its USB descriptors. I'm pretty sure the only significant difference is the configuration of the LED pins. Only 16MHz board firmwares are currently being built.
 
 Once you have a firmware file to upload, you can use the `atmega32u4_upload.py` tool to upload it if your board is not already running firmware from this project. If your board is already running firmware from this project, you can use either that tool or the `upload` command of the `usb_fan_config.py` tool. See details for those tools below.
 

@@ -1,10 +1,23 @@
-name: Fan Control plugin build
+name: Plugin build
 
-on: workflow_dispatch
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/plugin_build.yml'
+      - 'plugin/**'
+  pull_request:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/plugin_build.yml'
+      - 'plugin/**'
+  workflow_dispatch:
 
 jobs:  
   build:    
-    runs-on: windows-2019
+    runs-on: windows-2022
     
     steps:      
       - uses: actions/checkout@v3
