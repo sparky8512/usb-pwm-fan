@@ -105,6 +105,17 @@ There are 4 main operating modes for this script:
 
 If your development board uses a different bootloader than Caterina, you will need to use an upload tool specific to that bootloader.
 
+### safe_removal_config.py
+
+`safe_removal_config.py` is a Windows-specific device installation helper that can be used to remove a USB Fan device from the list of USB devices in the "Safely Remove Hardware" menu (the tray icon that looks like a USB plug).
+
+While USB Fan devices should be usable without any special driver installation, at least on Linux or Windows, the WinUSB driver that Windows auto-configures for it will always put devices in that menu. This tool can be used to override that behavior.
+
+For full usage details, you can run:
+```shell script
+python safe_removal_config.py --help
+```
+
 ## FanControl plugin
 
 The [plugin](plugin) directory has the source code for a plugin to Rémi Mercier's [Fan Control](https://getfancontrol.com/) program that will allow it to access fans connected to USB devices running this project's firmware. Note that this is a Windows-only application.
@@ -130,4 +141,4 @@ Things that may happen at some point of the future:
   * Allow disable serial port interface via software configuration
   * Add read of microcontroller temperature and voltage
 * FanControl plugin features
-  * Handle hot unplug/replug better
+  * ~~Handle hot unplug/replug better~~

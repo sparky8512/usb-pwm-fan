@@ -40,10 +40,13 @@ REGISTER_RESET_CONTROL = 0xf0
 REGISTER_SERIAL_NUMBER = 0xf8
 
 LED_MODES = ("alert", "on", "off", "blink")
+"""Valid modes for `FanDevice.set_led_mode`"""
 RESET_MODES = ("config", "reboot", "bootloader")
+"""Valid modes for `FanDevice.reset`"""
 
 
 class FanDevice(abc.ABC):
+    """Interface for operating on a USB fan device."""
 
     @abc.abstractmethod
     def read_register(self, reg, length):
@@ -53,8 +56,47 @@ class FanDevice(abc.ABC):
     def write_register(self, reg, value):
         raise NotImplementedError()
 
+    def set_speed(self, speed):
+        """Set fan speed (PWM duty cycle), in percent."""
+        max_duty = self.read_register(REGISTER_PWM_PERIOD, 2)
+        duty = round(max_duty * speed / 100.0)
+        self.write_register(REGISTER_PWM_DUTY, duty)
+
+    def get_speed(self):
+        """Get fan speed, in RPM."""
+        return self.read_register(REGISTER_TACHOMETER, 2)
+
+    def set_frequency(self, freq):
+        """Set PWM frequency, in Hz."""
+        max_duty = round(16000000.0 / freq)
+        if max_duty > 0xffff:
+            max_duty = 0
+        self.write_register(REGISTER_PWM_PERIOD, max_duty)
+
+    def get_frequency(self):
+        """Get PWM frequency, in Hz."""
+        max_duty = self.read_register(REGISTER_PWM_PERIOD, 2)
+        return round(16000000.0 / max_duty, 2)
+
+    def set_led_mode(self, mode):
+        """Set LED mode.
+
+        Args:
+            mode (str): One of the modes in `LED_MODES`.
+        """
+        self.write_register(REGISTER_LED_CONTROL, LED_MODES.index(mode))
+
+    def reset(self, mode):
+        """Reset device.
+
+        Args:
+            mode (str): One of the modes in `RESET_MODES`.
+        """
+        self.write_register(REGISTER_RESET_CONTROL, RESET_MODES.index(mode) + 1)
+
 
 class SerialFanDevice(FanDevice):
+    """Serial port control of a USB fan device."""
 
     def __init__(self, port):
         self._dev = serial.Serial(port, timeout=5, write_timeout=5)
@@ -96,6 +138,7 @@ class SerialFanDevice(FanDevice):
 
 
 class UsbFanDevice(FanDevice):
+    """Direct USB control of a USB fan device."""
 
     def __init__(self, device, interface):
         self._dev = device
@@ -193,35 +236,27 @@ def list_command(dev, opts):  # pylint: disable=unused-argument
 
 
 def set_command(dev, opts):
-    max_duty = dev.read_register(REGISTER_PWM_PERIOD, 2)
-    duty = round(max_duty * opts.speed / 100.0)
-    dev.write_register(REGISTER_PWM_DUTY, duty)
+    dev.set_speed(opts.speed)
 
 
 def get_command(dev, opts):  # pylint: disable=unused-argument
-    print(dev.read_register(REGISTER_TACHOMETER, 2))
+    print(dev.get_speed())
 
 
 def set_frequency_command(dev, opts):
-    max_duty = round(16000000.0 / opts.freq)
-    if max_duty > 0xffff:
-        max_duty = 0
-    dev.write_register(REGISTER_PWM_PERIOD, max_duty)
+    dev.set_frequency(opts.freq)
 
 
 def get_frequency_command(dev, opts):  # pylint: disable=unused-argument
-    max_duty = dev.read_register(REGISTER_PWM_PERIOD, 2)
-    print(round(16000000.0 / max_duty, 2))
+    print(dev.get_frequency())
 
 
 def led_command(dev, opts):
-    mode = LED_MODES.index(opts.mode)
-    dev.write_register(REGISTER_LED_CONTROL, mode)
+    dev.set_led_mode(opts.mode)
 
 
 def reset_command(dev, opts):
-    mode = RESET_MODES.index(opts.mode) + 1
-    dev.write_register(REGISTER_RESET_CONTROL, mode)
+    dev.reset(opts.mode)
 
 
 def write_register_command(dev, opts):
