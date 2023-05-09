@@ -7,7 +7,7 @@ namespace FanControl.UsbFan
 {
     internal class UsbFanControl : IPluginControlSensor, IDisposable
     {
-        private readonly UsbDevice _dev;
+        private readonly HotplugWrapper _dev;
         private readonly IPluginLogger _logger;
         private int _maxDuty;
 
@@ -17,7 +17,7 @@ namespace FanControl.UsbFan
 
         public float? Value { get; private set; }
 
-        public UsbFanControl(UsbDevice dev, IPluginLogger _logger, string serialNumber)
+        public UsbFanControl(HotplugWrapper dev, IPluginLogger _logger, string serialNumber)
         {
             _dev = dev;
             this._logger = _logger;
@@ -42,17 +42,10 @@ namespace FanControl.UsbFan
             {
                 _dev.ControlWriteIntertface(0x10, duty, null);
             }
+            catch (UnpluggedException) { }
             catch (Win32Exception e)
             {
-                int code = e.NativeErrorCode;
-                if (code == Win32.ERROR_BAD_COMMAND)
-                {
-                    _logger.Log($"{Name}: unplug detected");
-                }
-                else
-                {
-                    _logger.Log($"Error setting {Name}: {e.Message} ({code})");
-                }
+                _logger.Log($"Error setting {Name}: {e.Message} ({e.NativeErrorCode})");
             }
         }
 
@@ -62,6 +55,7 @@ namespace FanControl.UsbFan
             {
                 _dev.ControlWriteIntertface(0xf0, 1, null);
             }
+            catch (UnpluggedException) { }
             catch (Win32Exception)
             {
                 // Let Set deal with the error
@@ -75,6 +69,13 @@ namespace FanControl.UsbFan
             try
             {
                 buf = _dev.ControlReadInterface(0x11, 0, 2);
+            }
+            catch (UnpluggedException) {
+                // This should be exceedingly rare, so no point in taking
+                // extraordinary measures to hadle it any better than if it
+                // were unplugged just prior to init, instead of during init.
+                _logger.Log($"{Name} unplugged during init, ignoring this device");
+                return false;
             }
             catch (Win32Exception e)
             {

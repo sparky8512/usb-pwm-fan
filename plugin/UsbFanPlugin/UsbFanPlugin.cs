@@ -59,22 +59,23 @@ namespace FanControl.UsbFan
 
         public void Initialize()
         {
-            UsbDevice.EnumerateDevices(in FanInterfaceGuid, (UsbDevice device) =>
+            UsbDevice.EnumerateDevices(in FanInterfaceGuid, (UsbDevice usbDevice) =>
             {
                 try
                 {
-                    string serialNumber = device.GetSerialNumber();
+                    string serialNumber = usbDevice.GetSerialNumber();
                     if (serialNumber == null) {
-                        _logger.Log($"Error getting serial number from USB fan device {device.Name}");
+                        _logger.Log($"Error getting serial number from USB fan device {usbDevice.Name}");
                         return false;
                     }
 
-                    bool rv = CheckVersion(device);
+                    bool rv = CheckVersion(usbDevice);
                     if (!rv) {
                         _logger.Log($"Error checking version for USB fan device {serialNumber}");
                         return false;
                     }
 
+                    HotplugWrapper device = new HotplugWrapper(usbDevice, _logger, in FanInterfaceGuid, serialNumber);
                     UsbFanControl control = new UsbFanControl(device, _logger, serialNumber);
                     if (control.Initialize())
                     {
@@ -87,7 +88,7 @@ namespace FanControl.UsbFan
                 catch (Win32Exception e)
                 {
                     // This can happen if, for example, the device is unplugged in the middle
-                    _logger.Log($"Error enumerating USB fan device {device.Name}: {e.Message} ({e.NativeErrorCode})");
+                    _logger.Log($"Error enumerating USB fan device {usbDevice.Name}: {e.Message} ({e.NativeErrorCode})");
                     return false;
                 }
             });
