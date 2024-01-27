@@ -29,19 +29,20 @@ import atmega32u4_upload
 
 DEVICE_UUID = "{1ad9f93b-494c-4dda-a1e5-2e2bab181052}"
 DEVICE_MAJOR = 0
-DEVICE_MINOR = 1
+DEVICE_MINOR = 2
 
 # NOTE: These are subject to change until DEVICE_MAJOR changes to 1
 REGISTER_PWM_DUTY = 0x10
 REGISTER_PWM_PERIOD = 0x11
 REGISTER_TACHOMETER = 0x12
-REGISTER_LED_CONTROL = 0xf1
 REGISTER_RESET_CONTROL = 0xf0
+REGISTER_LED_CONTROL = 0xf1
+REGISTER_CONFIG_CONTROL = 0xf2
 REGISTER_SERIAL_NUMBER = 0xf8
 
 LED_MODES = ("alert", "on", "off", "blink")
 """Valid modes for `FanDevice.set_led_mode`"""
-RESET_MODES = ("config", "reboot", "bootloader")
+RESET_MODES = ("config", "reboot", "bootloader", "factory")
 """Valid modes for `FanDevice.reset`"""
 
 
@@ -85,6 +86,10 @@ class FanDevice(abc.ABC):
             mode (str): One of the modes in `LED_MODES`.
         """
         self.write_register(REGISTER_LED_CONTROL, LED_MODES.index(mode))
+
+    def save_config(self):
+        """Save current configuration as power-on defaults."""
+        self.write_register(REGISTER_CONFIG_CONTROL, 1)
 
     def reset(self, mode):
         """Reset device.
@@ -255,6 +260,10 @@ def led_command(dev, opts):
     dev.set_led_mode(opts.mode)
 
 
+def save_command(dev, opts):
+    dev.save_config()
+
+
 def reset_command(dev, opts):
     dev.reset(opts.mode)
 
@@ -311,6 +320,9 @@ def parse_args():
     subparser.add_argument("mode", choices=LED_MODES, help="The mode to set")
     subparser.set_defaults(command_func=led_command, header=False)
 
+    subparser = command_parsers.add_parser("save", help="Persist configuration across device reset")
+    subparser.set_defaults(command_func=save_command, header=False)
+
     subparser = command_parsers.add_parser("reset", help="Reset device")
     subparser.add_argument("--mode",
                            choices=RESET_MODES,
@@ -319,7 +331,7 @@ def parse_args():
     subparser.set_defaults(command_func=reset_command, header=False)
 
     subparser = command_parsers.add_parser("write_register", help="Write value to register")
-    subparser.add_argument("register", type=int, help="Register number to read", metavar="REG")
+    subparser.add_argument("register", type=int, help="Register number to write", metavar="REG")
     subparser.add_argument("value", help="Value or data to write", metavar="VALUE")
     subparser.set_defaults(command_func=write_register_command, header=False)
 

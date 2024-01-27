@@ -11,8 +11,12 @@
 #include "USBDesc.h"
 
 #include <avr/boot.h>
+#include <avr/eeprom.h>
+#include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
+
+#include <util/crc16.h>
 
 #if ISERIAL_MAX_LEN >= 10 * 8/5
 #define SERIAL_BYTES (10 * 8/5)
@@ -21,6 +25,38 @@
 #endif
 
 #define NUM_PULSE_TIMES 16
+
+#define CONFIG_STRUCT_REV 1
+
+struct config_data {
+    uint8_t struct_rev; // keep this first, bump by 1 for each rev, 0 and 255 reserved as blanked/unprogrammed
+    uint8_t led_mode;
+    uint16_t pwm_period;
+    uint16_t pwm1_duty;
+    uint8_t crc;        // keep this last
+}  __attribute__((packed));
+
+static const struct config_data default_config PROGMEM = {
+  /* struct_rev */  CONFIG_STRUCT_REV,
+  /* led_mode */    LED_MODE_AUTO,
+  /* pwm_period */  640,    // 640 clock cycles is 25KHz
+  /* pwm1_duty */   0,
+  /* crc */         0       // dummy value, will be recomputed when writing
+};
+
+static struct config_data config;
+
+#define crc8 _crc8_ccitt_update
+
+static inline uint8_t crc_bytes(const uint8_t* bytes, uint8_t n)
+{
+  uint8_t crc = 0xff;
+  while (n--) {
+    crc = crc8(crc, *bytes++);
+  }
+
+  return crc;
+}
 
 static uint8_t pending_tccr1a;
 
@@ -46,7 +82,7 @@ ISR(INT1_vect)
     pulse_delta = new_time - old_time;
 }
 
-UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL), ledMode(0)
+UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL)
 {
     PluggableUSB().plug(this);
 }
@@ -60,7 +96,7 @@ int UsbPwmDevice::getInterface(uint8_t* interfaceCount)
 }
 
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 1
+#define VERSION_MINOR 2
 static const uint8_t version[2] PROGMEM = { VERSION_MINOR, VERSION_MAJOR };
 
 //
@@ -162,7 +198,7 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
         }
         return send(0, &rpm, sizeof(rpm)) >= 0;
     } else if (reg == 0xf1) {
-        uint16_t mode = ledMode;
+        uint16_t mode = config.led_mode;
         return send(0, &mode, sizeof(mode)) >= 0;
     } else if (reg == 0xf8) {
         char buf[SERIAL_BYTES];
@@ -176,6 +212,7 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
 {
     if (reg == 0x10) {
         // Set PWM duty high time
+        config.pwm1_duty = value;
         uint8_t new_tccr1a;
         if (value) {
             new_tccr1a = 0b10000010;    // COM1A[1:0] = 10, WGM1[1:0] = 10
@@ -198,6 +235,7 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
         return true;
     } else if (reg == 0x11) {
         // Set PWM period time
+        config.pwm_period = value;
         ICR1 = value - 1;
         TCNT1 = 0;
         return true;
@@ -214,6 +252,11 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
         } else if (value == 3) {
             // Reboot into bootloader
             key = MAGIC_KEY;
+        } else if (value == 4) {
+            // Reset default config to factory default
+            eeprom_update_byte((uint8_t *)0, 0xff);
+            // and then do regular reboot
+            key = 0x0000;
         } else if (value == 255) {
             // Watchdog test
         } else {
@@ -235,11 +278,23 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
     } else if (reg == 0xf1) {
         // LED control
         if (value <= LED_MODE_MAX) {
-            ledMode = (uint8_t)value;
+            config.led_mode = (uint8_t)value;
         }
         return true;
+    } else if (reg == 0xf2) {
+        // Configuration control
+        if (value == 1) {
+            // Persist current config
+            config.crc = crc_bytes((uint8_t *)&config, sizeof(config) - 1);
+            eeprom_update_block(&config, (uint8_t *)0, sizeof(config));
+        }
     }
     return false;
+}
+
+uint8_t UsbPwmDevice::getLedMode()
+{
+    return config.led_mode;
 }
 
 bool UsbPwmDevice::checkStall()
@@ -297,13 +352,25 @@ uint8_t UsbPwmDevice::getShortName(char *name)
 
 int UsbPwmDevice::begin(void)
 {
-    // Configure Timer 1 for 25KHz PWM, start with output off (0% duty cycle)
+    eeprom_read_block(&config, (uint8_t *)0, sizeof(config));
+    if (config.struct_rev != CONFIG_STRUCT_REV ||
+        crc_bytes((uint8_t *)&config, sizeof(config)) != 0) {
+        memcpy_P(&config, &default_config, sizeof(config));
+    }
+
+    // Set Timer 1 to configured frequency and duty cycle
     TIMSK1 = 0;
-    ICR1 = 639;
-    OCR1A = 0;
-    TCNT1 = 0;
-    TCCR1A = pending_tccr1a = 0b00000010;    // COM1A[1:0] = 00, WGM1[1:0] = 10
+    ICR1 = config.pwm_period - 1;
     TCCR1B = 0b00011001;    // WGM1[3:2] = 11, CS1[2:0] = 001
+    if (config.pwm1_duty) {
+        TCCR1A = pending_tccr1a = 0b10000010;   // COM1A[1:0] = 10, WGM1[1:0] = 10
+        OCR1A = config.pwm1_duty - 1;
+    } else {
+        // Turn PWM off for duty cycle 0
+        TCCR1A = pending_tccr1a = 0b00000010;   // COM1A[1:0] = 00, WGM1[1:0] = 10
+        OCR1A = 0;
+    }
+    TCNT1 = 0;
 
     EIMSK = 0;
     EICRA = 0b00001100;

@@ -177,8 +177,6 @@ void setup()
     DIDR0 = 0b11110011;
     DIDR2 = 0b00011111;
 
-    TheUsbPwmDevice.begin();
-
     Serial.begin(115200);
 
 #ifdef SERIAL_CONNECT_WAIT
@@ -191,6 +189,8 @@ void setup()
     }
     Serial.println(F("PWM Fan start"));
 #endif
+
+    TheUsbPwmDevice.begin();
 }
 
 static bool blink_state;

@@ -29,9 +29,9 @@ The firmware currently supports the following features:
 
 ### Supported microcontroller hardware
 
-The firmware currently targets the Atmel (Microchip) [ATmega32U4](https://www.microchip.com/en-us/product/ATmega32U4) AVR microcontroller, and should work without modification on any microcontroller board module that claims to be compatible with [Arduino Leonardo](https://docs.arduino.cc/hardware/leonardo) or (to be added soon) [Sparkfun Pro Micro](https://www.sparkfun.com/products/12640) development boards. Clones of these boards can be found for cheap at many online retailers. These boards have USB connectors on them so they can be connected to a PC easily and generally have a number of IO lines that can be wired up to external hardware.
+The firmware currently targets the Atmel (Microchip) [ATmega32U4](https://www.microchip.com/en-us/product/ATmega32U4) AVR microcontroller, and should work without modification on any microcontroller board module that claims to be compatible with [Arduino Leonardo](https://docs.arduino.cc/hardware/leonardo) or [Sparkfun Pro Micro](https://www.sparkfun.com/products/12640) development boards. Clones of these boards can be found for cheap at many online retailers. These boards have USB connectors on them so they can be connected to a PC easily and generally have a number of IO lines that can be wired up to external hardware.
 
-Other ATmega32U4-based boards may work, too, although getting the LED output to work may require building from source instead of using the pre-built firmware files. Also, unless the board runs its microcontroller with 5V power supply, additional hardware components will be required to drive the fan's PWM input. The remainder of this document assumes the microcontroller is running with 5V.
+Other ATmega32U4-based boards may work, too, although getting the LED output to work may require building from source instead of using the pre-built firmware files. Also, unless the board runs its microcontroller with 5V power supply, additional hardware components may be required to drive the fan's PWM input. The remainder of this document assumes the microcontroller is running with 5V.
 
 ### Supported fans
 
@@ -63,7 +63,7 @@ Finally, connect `GND` (Ground) from your microcontroller board to the ground pi
 
 ### Uploading the firmware
 
-Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board. There are currently files for 3 different board types: `beetle`, `leonardo`, and `promicro16`. If your board has "Pro Micro" printed on it, it's probably a Sparkfun Pro Micro clone; otherwise, it's probably closer to Leonardo. The Beetle firmware is the same as the Leonardo firmware except it uses the [DFRobot Beetle](https://www.dfrobot.com/product-1075.html) VID/PID in its USB descriptors. I'm pretty sure the only significant difference is the configuration of the LED pins. Only 16MHz board firmwares are currently being built.
+Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board. There are currently files for 3 different board types: `beetle`, `leonardo`, and `promicro16`. If your board has "Pro Micro" printed on it, it's probably a Sparkfun Pro Micro clone; otherwise, it's probably closer to Leonardo. The Beetle firmware is the same as the Leonardo firmware except it uses the [DFRobot Beetle](https://www.dfrobot.com/product-1075.html) VID/PID in its USB descriptors. I'm pretty sure the only significant hardware difference among any of these boards is the configuration of the LED pins. Only 16MHz board firmwares are currently being built.
 
 Once you have a firmware file to upload, you can use the `atmega32u4_upload.py` tool to upload it if your board is not already running firmware from this project. If your board is already running firmware from this project, you can use either that tool or the `upload` command of the `usb_fan_config.py` tool. See details for those tools below.
 
@@ -135,7 +135,7 @@ Things that may happen at some point of the future:
 * ~~Workflow actions for builds~~
 * Firmware features
   * Extend for multiple fans
-  * Save default configuration to EEPROM, restore on boot
+  * ~~Save default configuration to EEPROM, restore on boot~~
   * Allow software configuration of which GPIO to use for LED output
   * Allow change serial number via software configuration
   * Allow disable serial port interface via software configuration

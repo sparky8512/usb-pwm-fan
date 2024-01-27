@@ -11,7 +11,7 @@ namespace FanControl.UsbFan
     {
         private static readonly Guid FanInterfaceGuid = new Guid(0x1ad9f93b, 0x494c, 0x4dda, 0xa1, 0xe5, 0x2e, 0x2b, 0xab, 0x18, 0x10, 0x52);
         private const byte DeviceVersionMajor = 0;
-        private const byte DeviceVersionMinor = 1;
+        private const byte DeviceVersionMinor = 2;
 
         private readonly IPluginLogger _logger;
         private readonly IPluginDialog _dialog;
@@ -50,7 +50,7 @@ namespace FanControl.UsbFan
             // For pre-release, insist on exact minor version match
             if (buf[1] != DeviceVersionMajor || buf[0] != DeviceVersionMinor)
             {
-                _logger.Log($"Found USB fan device, but incompatible firware revision: {buf[1]}, {buf[0]}");
+                _logger.Log($"Found USB fan device, but incompatible firmware revision: {buf[1]}, {buf[0]}");
                 return false;
             }
 
