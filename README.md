@@ -47,7 +47,7 @@ In all cases, if you are using USB power, make sure you do not exceed the maximu
 
 ### Connecting the fan to the microcontroller board
 
-The firmware currently supports up to two fan connections.
+The firmware currently supports up to three fan connections.
 
 The first PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
 
@@ -60,6 +60,10 @@ If you are using USB (5V) to power the fan, this will be usually be labelled `+5
 Finally, connect `GND` (Ground) from your microcontroller board to the ground pin on the fan connector. This is is the pin on the opposite end of the connector from the PWM input, will be inside the notches, and fans almost always have a black wire going to this pin on the connector.
 
 If you have a second fan to connect, its PWM output is on pin PB6, which is normally labelled `D10`, and its tachometer input is on pin PD0, which is normally labelled `D3` or `SCL`. Otherwise, follow the above directions, including connecting power and ground.
+
+If you have a third fan to connect, its PWM output is on pin PB7, which is normally labelled `D11`, and its tachometer input is on pin PB2, which is normally labelled `D16`, `MOSI`, or just `MO`. Otherwise, follow the above directions, including connecting power and ground.
+
+Note that most boards will not have all these pins available for connection. It's OK to connect just the PWM output or just the tachometer input for a fan if that's all the functionality you need for that fan. It's also OK to skip the earlier fan connections if only the later ones have pins available.
 
 **Be very careful** not to connect the wires wrong. PC motherboard fan headers are keyed to the notches on the connector in order to prevent plugging the fan in backwards or off center. If you are using a bare 4-pin header to connect the fan you won't have that protection. Connecting the fan wrong can easily fry the fan, and if using 12V can also fry your microcontroller board or even the USB port on your PC. If in doubt, do a web search for "4-pin fan header pinout" and look for pictures that show how the fan notches line up with the wires for PWM, tach, power, and ground.
 
@@ -132,14 +136,13 @@ To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Pl
 
 ## Project TODO list
 
-Things that may happen at some point of the future:
+Things that may happen at some point of the future, but for which no work is currently planned:
 * Better documentation... *much* better documentation
 * ~~Python script for configuration and status~~
 * ~~Python script for firmware upload~~
 * ~~Workflow actions for builds~~
 * Firmware features
   * ~~Extend for multiple fans~~
-  * Support for 3rd fan
   * ~~Save default configuration to EEPROM, restore on boot~~
   * Allow software configuration of which GPIO to use for LED output
   * Allow change serial number via software configuration

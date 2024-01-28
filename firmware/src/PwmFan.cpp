@@ -185,8 +185,10 @@ void setup()
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(9, OUTPUT);
     pinMode(10, OUTPUT);
-    pinMode(2, INPUT);
-    pinMode(3, INPUT);
+    pinMode(11, OUTPUT);
+    pinMode(2, INPUT_PULLUP);
+    pinMode(3, INPUT_PULLUP);
+    pinMode(16, INPUT_PULLUP);
 
     // Power off unneeded hardware units
     ADCSRA = 0;
@@ -195,7 +197,7 @@ void setup()
     PRR1 = 0b00011001;
     DIDR1 = 0b00000001;
     DIDR0 = 0b11110011;
-    DIDR2 = 0b00011111;
+    DIDR2 = 0b00111111;
 
     Serial.begin(115200);
 

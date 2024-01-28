@@ -40,6 +40,8 @@ REGISTER_PWM_PERIOD = 0x11
 REGISTER_TACHOMETER1 = 0x12
 REGISTER_PWM_DUTY2 = 0x20
 REGISTER_TACHOMETER2 = 0x22
+REGISTER_PWM_DUTY3 = 0x30
+REGISTER_TACHOMETER3 = 0x32
 REGISTER_RESET_CONTROL = 0xf0
 REGISTER_LED_CONTROL = 0xf1
 REGISTER_CONFIG_CONTROL = 0xf2
@@ -375,8 +377,8 @@ def parse_args():
         parser.error("--all may not be combined with --index")
     if not opts.all and opts.index is None and opts.command_func != list_command:  # pylint: disable=comparison-with-callable
         opts.index = 0
-    if opts.fan_index < 0 or opts.fan_index > 1:
-        parser.error("Fan index must be between 0 and 1")
+    if opts.fan_index < 0 or opts.fan_index > 2:
+        parser.error("Fan index must be between 0 and 2")
     if opts.command_func == set_command and (opts.speed < 0.0 or opts.speed > 100.0):  # pylint: disable=comparison-with-callable
         parser.error("Invalid speed percentage")
     if opts.command_func == write_register_command and opts.register != REGISTER_SERIAL_NUMBER:  # pylint: disable=comparison-with-callable

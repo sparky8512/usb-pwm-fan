@@ -24,9 +24,10 @@
 #define SERIAL_BYTES ISERIAL_MAX_LEN
 #endif
 
+#define NUM_FANS 3
 #define NUM_PULSE_TIMES 16
 
-#define CONFIG_STRUCT_REV 2
+#define CONFIG_STRUCT_REV 3
 
 struct config_data {
     uint8_t struct_rev; // keep this first, bump by 1 for each rev, 0 and 255 reserved as blanked/unprogrammed
@@ -34,6 +35,7 @@ struct config_data {
     uint16_t pwm_period;
     uint16_t pwm1_duty;
     uint16_t pwm2_duty;
+    uint16_t pwm3_duty;
     uint8_t crc;        // keep this last
 }  __attribute__((packed));
 
@@ -43,6 +45,7 @@ static const struct config_data default_config PROGMEM = {
   /* pwm_period */  640,    // 640 clock cycles is 25KHz
   /* pwm1_duty */   0,
   /* pwm2_duty */   0,
+  /* pwm3_duty */   0,
   /* crc */         0       // dummy value, will be recomputed when writing
 };
 
@@ -73,7 +76,7 @@ struct pulse_data {
     unsigned long times[NUM_PULSE_TIMES];
     volatile unsigned long delta;
 };
-static struct pulse_data pulse_datas[2];
+static struct pulse_data pulse_datas[NUM_FANS];
 
 static void pulse_interrupt(struct pulse_data *pdata)
 {
@@ -93,6 +96,13 @@ ISR(INT0_vect)
 ISR(INT1_vect)
 {
     pulse_interrupt(&pulse_datas[0]);
+}
+
+ISR(PCINT0_vect)
+{
+    if (PINB & 0b00000100) {
+        pulse_interrupt(&pulse_datas[2]);
+    }
 }
 
 UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL)
@@ -184,26 +194,19 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 {
     if (reg == 0x00) {
         return send(TRANSFER_PGM, &version, sizeof(version)) >= 0;
-    } else if (reg == 0x10 || reg == 0x20) {
+    } else if (reg == 0x10 || reg == 0x20 || reg == 0x30) {
+        int ifan = (reg - 0x10) / 0x10;
         uint16_t pwm_duty;
-        if (reg == 0x10) {
-            if (pending_tccr1a & 0b10000000) {
-                pwm_duty = OCR1A + 1;
-            } else {
-                pwm_duty = 0;
-            }
+        if (pending_tccr1a & (0b10000000 >> ifan*2)) {
+            pwm_duty = *(&OCR1A + ifan) + 1;
         } else {
-            if (pending_tccr1a & 0b00100000) {
-                pwm_duty = OCR1B + 1;
-            } else {
-                pwm_duty = 0;
-            }
+            pwm_duty = 0;
         }
         return send(0, &pwm_duty, sizeof(pwm_duty)) >= 0;
     } else if (reg == 0x11) {
         uint16_t pwm_period = ICR1 + 1;
         return send(0, &pwm_period, sizeof(pwm_period)) >= 0;
-    } else if (reg == 0x12 || reg == 0x22) {
+    } else if (reg == 0x12 || reg == 0x22 || reg == 0x32) {
         struct pulse_data *pdata = &pulse_datas[(reg - 0x12)/0x10];
         // Interrupts are disabled, so can access these without worrying about
         // atomicity
@@ -216,7 +219,12 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
             rpm = 0;
         } else {
             // 2 pulses per revolution
-            rpm = (unsigned long)60000000*(NUM_PULSE_TIMES/2)/delta;
+            unsigned long ulong_rpm = (unsigned long)60000000*(NUM_PULSE_TIMES/2)/delta;
+            if (ulong_rpm > 0xffff) {
+                rpm = 0xffff;
+            } else {
+                rpm = ulong_rpm;
+            }
         }
         return send(0, &rpm, sizeof(rpm)) >= 0;
     } else if (reg == 0xf1) {
@@ -232,27 +240,19 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 
 bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
 {
-    if (reg == 0x10 || reg == 0x20) {
+    if (reg == 0x10 || reg == 0x20 || reg == 0x30) {
         // Set PWM duty high time
+        int ifan = (reg - 0x10) / 0x10;
         uint8_t new_tccr1a;
-        if (reg == 0x10) {
-            config.pwm1_duty = value;
-            new_tccr1a = pending_tccr1a & 0b00111111;   // Mask off COM1A bits
-            if (value) {
-                new_tccr1a |= 0b10000000;   // COM1A[1:0] = 10
-                OCR1A = value - 1;
-            } // else set COM1A[1:0] = 00 to turn off PWM on output A
-        } else {
-            config.pwm2_duty = value;
-            new_tccr1a = pending_tccr1a & 0b11001111;   // Mask off COM1B bits
-            if (value) {
-                new_tccr1a |= 0b00100000;   // COM1B[1:0] = 10
-                OCR1B = value - 1;
-            } // else set COM1B[1:0] = 00 to turn off PWM on output B
-        }
+        *(&config.pwm1_duty + ifan) = value;
+        new_tccr1a = pending_tccr1a & ~(0b11000000 >> ifan*2);  // Mask off COM1x bits
+        if (value) {
+            new_tccr1a |= 0b10000000 >> ifan*2; // COM1x[1:0] = 10
+            *(&OCR1A + ifan) = value - 1;
+        } // else leave COM1x[1:0] = 00 to turn off PWM on output
         if (pending_tccr1a != new_tccr1a) {
             if (value) {
-                struct pulse_data *pdata = &pulse_datas[(reg - 0x10)/0x10];
+                struct pulse_data *pdata = &pulse_datas[ifan];
                 // Fan was not running before, so prime the stall detection
                 pdata->times[pdata->index] = micros();
             }
@@ -318,6 +318,7 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
             config.crc = crc_bytes((uint8_t *)&config, sizeof(config) - 1);
             eeprom_update_block(&config, (uint8_t *)0, sizeof(config));
         }
+        // all other values are currently reserved
         return true;
     }
     return false;
@@ -333,7 +334,7 @@ bool UsbPwmDevice::checkStall()
     bool stalled = false;
     uint8_t old_sreg = SREG;
     cli();
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < NUM_FANS; i++) {
         if (pending_tccr1a & (0b10000000 >> i*2)) {
             struct pulse_data *pdata = &pulse_datas[i];
             unsigned long delta = pdata->delta;
@@ -404,6 +405,9 @@ int UsbPwmDevice::begin(void)
     if (config.pwm2_duty) {
         pending_tccr1a |= 0b00100000;   // COM1B[1:0] = 10
     }
+    if (config.pwm3_duty) {
+        pending_tccr1a |= 0b00001000;   // COM1C[1:0] = 10
+    }
     TCCR1A = pending_tccr1a;
     if (config.pwm1_duty) {
         OCR1A = config.pwm1_duty - 1;
@@ -411,12 +415,20 @@ int UsbPwmDevice::begin(void)
     if (config.pwm2_duty) {
         OCR1B = config.pwm2_duty - 1;
     }
+    if (config.pwm3_duty) {
+        OCR1C = config.pwm3_duty - 1;
+    }
     TCNT1 = 0;
 
     EIMSK = 0;
     EICRA = 0b00001111; // ISC0[1:0], ISC1[1:0] = 11
     EIFR = 0b00000011;  // INTF[1:0] = 11
     EIMSK = 0b00000011; // INT[1:0] = 11
+
+    PCICR = 0;
+    PCIFR = 1;
+    PCMSK0 = 0b00000100;    // PCINT2 = 1
+    PCICR = 1;
 
     return 0;
 }
