@@ -18,6 +18,24 @@
 // failsafe for development and should not be needed in released firmware
 //#define BOOTLOAD_ON_WATCHDOG
 
+// Work around missing general purpose LED output on Micro Pro, use the "TX"
+// LED instead. This will fight with the USB core code over the state of that
+// LED, but this is the best we can do without replacing the pins_arduino.h
+// file for that board.
+#ifdef ALT_LED_BUILTIN
+#undef LED_BUILTIN
+#define LED_BUILTIN ALT_LED_BUILTIN
+#endif
+
+// And of course that LED has to be inverted, too...
+#ifdef LED_INVERTED
+#define LED_ON LOW
+#define LED_OFF HIGH
+#else
+#define LED_ON HIGH
+#define LED_OFF LOW
+#endif
+
 #define STATE_IDLE 0
 #define STATE_READ_REGISTER 1
 #define STATE_WRITE_REGISTER 2
@@ -217,16 +235,16 @@ void loop()
         }
     }
     if (mode == LED_MODE_ON) {
-        digitalWrite(LED_BUILTIN, HIGH);
+        digitalWrite(LED_BUILTIN, LED_ON);
     } else if (mode == LED_MODE_OFF) {
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_BUILTIN, LED_OFF);
     } else if (mode == LED_MODE_BLINK) {
         if (now > next_blink) {
             if (blink_state) {
-                digitalWrite(LED_BUILTIN, LOW);
+                digitalWrite(LED_BUILTIN, LED_OFF);
                 next_blink += 140;
             } else {
-                digitalWrite(LED_BUILTIN, HIGH);
+                digitalWrite(LED_BUILTIN, LED_ON);
                 next_blink += 10;
             }
             blink_state = !blink_state;
