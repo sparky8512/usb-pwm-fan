@@ -27,14 +27,19 @@ except ModuleNotFoundError:
 
 import atmega32u4_upload
 
-DEVICE_UUID = "{1ad9f93b-494c-4dda-a1e5-2e2bab181052}"
-DEVICE_MAJOR = 0
-DEVICE_MINOR = 2
+DESCRIPTOR_TYPE_BOS = 0x0f
+DESCRIPTOR_TYPE_DEVICE_CAPABILITY = 0x10
+CAPABILITY_TYPE_PLATFORM = 0x05
 
-# NOTE: These are subject to change until DEVICE_MAJOR changes to 1
-REGISTER_PWM_DUTY = 0x10
+DEVICE_UUID = "{1ad9f93b-494c-4dda-a1e5-2e2bab181052}"
+DEVICE_MAJOR = 1
+DEVICE_MINOR = 0
+
+REGISTER_PWM_DUTY1 = 0x10
 REGISTER_PWM_PERIOD = 0x11
-REGISTER_TACHOMETER = 0x12
+REGISTER_TACHOMETER1 = 0x12
+REGISTER_PWM_DUTY2 = 0x20
+REGISTER_TACHOMETER2 = 0x22
 REGISTER_RESET_CONTROL = 0xf0
 REGISTER_LED_CONTROL = 0xf1
 REGISTER_CONFIG_CONTROL = 0xf2
@@ -57,15 +62,27 @@ class FanDevice(abc.ABC):
     def write_register(self, reg, value):
         raise NotImplementedError()
 
-    def set_speed(self, speed):
-        """Set fan speed (PWM duty cycle), in percent."""
+    def set_speed(self, speed, index):
+        """Set fan speed (PWM duty cycle).
+
+        Args:
+            speed (float): Speed, in percent.
+            index (int): Index of fan to use.
+        """
         max_duty = self.read_register(REGISTER_PWM_PERIOD, 2)
         duty = round(max_duty * speed / 100.0)
-        self.write_register(REGISTER_PWM_DUTY, duty)
+        self.write_register(REGISTER_PWM_DUTY1 + index * 0x10, duty)
 
-    def get_speed(self):
-        """Get fan speed, in RPM."""
-        return self.read_register(REGISTER_TACHOMETER, 2)
+    def get_speed(self, index):
+        """Get fan speed.
+
+        Args:
+            index (int): Index of fan to use.
+
+        Returns:
+            A float denoting the rotational speed, in RPM.
+        """
+        return self.read_register(REGISTER_TACHOMETER1 + index * 0x10, 2)
 
     def set_frequency(self, freq):
         """Set PWM frequency, in Hz."""
@@ -186,7 +203,7 @@ class UuidFinder:
         self._uuid = uuid.UUID(match_uuid)
 
     def check_bos(self, buf):
-        if len(buf) < 5 or buf[0] < 5 or buf[1] != 0x0f:
+        if len(buf) < 5 or buf[0] < 5 or buf[1] != DESCRIPTOR_TYPE_BOS:
             return False
         end = min(len(buf), buf[2] + buf[3] * 256)
         num_caps = buf[4]
@@ -194,11 +211,11 @@ class UuidFinder:
         pos = 5
         while num_caps:
             remain = end - pos
-            if remain < 3 or buf[pos] < 3 or buf[pos + 1] != REGISTER_PWM_DUTY:
+            if remain < 3 or buf[pos] < 3 or buf[pos + 1] != DESCRIPTOR_TYPE_DEVICE_CAPABILITY:
                 break
             if buf[pos] > remain:
                 break
-            if buf[pos + 2] == 0x05 and buf[pos] >= 20:
+            if buf[pos + 2] == CAPABILITY_TYPE_PLATFORM and buf[pos] >= 20:
                 platform_cap_uuid = uuid.UUID(bytes_le=bytes(buf[pos + 4:pos + 20]))
                 if platform_cap_uuid == self._uuid:
                     found_cap_data.append(bytes(buf[pos + 20:pos + buf[pos]]))
@@ -226,7 +243,7 @@ def find_fan_devs(index=None):
     devs = usb_module.find(find_all=1, custom_match=UuidFinder(DEVICE_UUID))
     for dev in devs:
         for data in dev.uuid_finder_data:
-            if len(data) >= 3 and data[1] == DEVICE_MAJOR and data[0] == DEVICE_MINOR:
+            if len(data) >= 3 and data[1] == DEVICE_MAJOR and data[0] >= DEVICE_MINOR:
                 if index is None or index == found:
                     fan_devs.append(UsbFanDevice(dev, data[2]))
                 if index == found:
@@ -241,11 +258,11 @@ def list_command(dev, opts):  # pylint: disable=unused-argument
 
 
 def set_command(dev, opts):
-    dev.set_speed(opts.speed)
+    dev.set_speed(opts.speed, opts.fan_index)
 
 
 def get_command(dev, opts):  # pylint: disable=unused-argument
-    print(dev.get_speed())
+    print(dev.get_speed(opts.fan_index))
 
 
 def set_frequency_command(dev, opts):
@@ -288,6 +305,10 @@ def upload_command(dev, opts):
 def parse_args():
     parser = argparse.ArgumentParser(description="USB fan device configuration")
     parser.add_argument("-i", "--index", type=int, help="0-based index of device to use")
+    parser.add_argument("-f", "--fan-index",
+                        type=int,
+                        default=0,
+                        help="0-based index of fan to use on device; default is 0")
     parser.add_argument(
         "-a",
         "--all",
@@ -354,6 +375,8 @@ def parse_args():
         parser.error("--all may not be combined with --index")
     if not opts.all and opts.index is None and opts.command_func != list_command:  # pylint: disable=comparison-with-callable
         opts.index = 0
+    if opts.fan_index < 0 or opts.fan_index > 1:
+        parser.error("Fan index must be between 0 and 1")
     if opts.command_func == set_command and (opts.speed < 0.0 or opts.speed > 100.0):  # pylint: disable=comparison-with-callable
         parser.error("Invalid speed percentage")
     if opts.command_func == write_register_command and opts.register != REGISTER_SERIAL_NUMBER:  # pylint: disable=comparison-with-callable

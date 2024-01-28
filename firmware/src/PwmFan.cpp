@@ -184,7 +184,9 @@ void setup()
 
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(9, OUTPUT);
+    pinMode(10, OUTPUT);
     pinMode(2, INPUT);
+    pinMode(3, INPUT);
 
     // Power off unneeded hardware units
     ADCSRA = 0;

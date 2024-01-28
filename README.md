@@ -47,17 +47,19 @@ In all cases, if you are using USB power, make sure you do not exceed the maximu
 
 ### Connecting the fan to the microcontroller board
 
-The firmware currently only supports a single fan connection.
+The firmware currently supports up to two fan connections.
 
-Its PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
+The first PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
 
-The tachometer input is on pin PD1, which is normally labelled `D2` or `SDA` on microcontroller boards. This must be connected to the tachometer (sometimes labelled as "sense") output on the fan connector. This is the next pin down from the PWM input and fans usually have a green wire going to this pin on the connector, but it could also be yellow if the wire for power is red. You must also connect a 10K resistor between this pin and `+5V` (sometimes labelled `Vcc`). Without this pull-up resistor, the firmware will not be able to read the rotational speed.
+The first tachometer input is on pin PD1, which is normally labelled `D2` or `SDA` on microcontroller boards. This must be connected to the tachometer (sometimes labelled as "sense") output on the fan connector. This is the next pin down from the PWM input and fans usually have a green wire going to this pin on the connector, but it could also be yellow if the wire for power is red. You must also connect a 10K resistor between this pin and `+5V` (sometimes labelled `Vcc`). Without this pull-up resistor, the firmware will not be able to read the rotational speed.
 
 Power and ground lines must also be connected to the fan:
 
 If you are using USB (5V) to power the fan, this will be usually be labelled `+5V` or `Vcc` on microcontroller boards. If you are using 12V to power the fan, this will need to connect to your additional power supply or the output of a boost converter. Connect this to the power pin on the fan connector, which is the next pin down from the tachometer output pin and fans usually have a yellow or red wire going to this pin.
 
 Finally, connect `GND` (Ground) from your microcontroller board to the ground pin on the fan connector. This is is the pin on the opposite end of the connector from the PWM input, will be inside the notches, and fans almost always have a black wire going to this pin on the connector.
+
+If you have a second fan to connect, its PWM output is on pin PB6, which is normally labelled `D10`, and its tachometer input is on pin PD0, which is normally labelled `D3` or `SCL`. Otherwise, follow the above directions, including connecting power and ground.
 
 **Be very careful** not to connect the wires wrong. PC motherboard fan headers are keyed to the notches on the connector in order to prevent plugging the fan in backwards or off center. If you are using a bare 4-pin header to connect the fan you won't have that protection. Connecting the fan wrong can easily fry the fan, and if using 12V can also fry your microcontroller board or even the USB port on your PC. If in doubt, do a web search for "4-pin fan header pinout" and look for pictures that show how the fan notches line up with the wires for PWM, tach, power, and ground.
 
@@ -120,6 +122,8 @@ python safe_removal_config.py --help
 
 The [plugin](plugin) directory has the source code for a plugin to Rémi Mercier's [Fan Control](https://getfancontrol.com/) program that will allow it to access fans connected to USB devices running this project's firmware. Note that this is a Windows-only application.
 
+This plugin currently only supports the first fan (the one connected on pins `D9` and `D2`) per USB device.
+
 ### Installation
 
 Binary releases of the plugin can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository.
@@ -134,7 +138,8 @@ Things that may happen at some point of the future:
 * ~~Python script for firmware upload~~
 * ~~Workflow actions for builds~~
 * Firmware features
-  * Extend for multiple fans
+  * ~~Extend for multiple fans~~
+  * Support for 3rd fan
   * ~~Save default configuration to EEPROM, restore on boot~~
   * Allow software configuration of which GPIO to use for LED output
   * Allow change serial number via software configuration
@@ -142,3 +147,4 @@ Things that may happen at some point of the future:
   * Add read of microcontroller temperature and voltage
 * FanControl plugin features
   * ~~Handle hot unplug/replug better~~
+  * Handle multiple fans per USB device

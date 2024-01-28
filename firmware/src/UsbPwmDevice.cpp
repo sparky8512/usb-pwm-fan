@@ -26,13 +26,14 @@
 
 #define NUM_PULSE_TIMES 16
 
-#define CONFIG_STRUCT_REV 1
+#define CONFIG_STRUCT_REV 2
 
 struct config_data {
     uint8_t struct_rev; // keep this first, bump by 1 for each rev, 0 and 255 reserved as blanked/unprogrammed
     uint8_t led_mode;
     uint16_t pwm_period;
     uint16_t pwm1_duty;
+    uint16_t pwm2_duty;
     uint8_t crc;        // keep this last
 }  __attribute__((packed));
 
@@ -41,6 +42,7 @@ static const struct config_data default_config PROGMEM = {
   /* led_mode */    LED_MODE_AUTO,
   /* pwm_period */  640,    // 640 clock cycles is 25KHz
   /* pwm1_duty */   0,
+  /* pwm2_duty */   0,
   /* crc */         0       // dummy value, will be recomputed when writing
 };
 
@@ -66,20 +68,31 @@ ISR(TIMER1_OVF_vect)
     TIMSK1 = 0;
 }
 
-static uint8_t pulse_index;
-static unsigned long pulse_times[NUM_PULSE_TIMES];
-static volatile unsigned long last_pulse;
-static volatile unsigned long pulse_delta;
+struct pulse_data {
+    uint8_t index;
+    unsigned long times[NUM_PULSE_TIMES];
+    volatile unsigned long delta;
+};
+static struct pulse_data pulse_datas[2];
+
+static void pulse_interrupt(struct pulse_data *pdata)
+{
+    uint8_t i = (pdata->index + 1) % NUM_PULSE_TIMES;
+    pdata->index = i;
+    unsigned long old_time = pdata->times[i];
+    unsigned long new_time = micros();
+    pdata->times[i] = new_time;
+    pdata->delta = new_time - old_time;
+}
+
+ISR(INT0_vect)
+{
+    pulse_interrupt(&pulse_datas[1]);
+}
 
 ISR(INT1_vect)
 {
-    uint8_t i = (pulse_index + 1) % NUM_PULSE_TIMES;
-    pulse_index = i;
-    unsigned long old_time = pulse_times[i];
-    unsigned long new_time = micros();
-    last_pulse = new_time;
-    pulse_times[i] = new_time;
-    pulse_delta = new_time - old_time;
+    pulse_interrupt(&pulse_datas[0]);
 }
 
 UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL)
@@ -95,8 +108,8 @@ int UsbPwmDevice::getInterface(uint8_t* interfaceCount)
     return USB_SendControl(0, &iface, sizeof(iface));
 }
 
-#define VERSION_MAJOR 0
-#define VERSION_MINOR 2
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 0
 static const uint8_t version[2] PROGMEM = { VERSION_MINOR, VERSION_MAJOR };
 
 //
@@ -171,22 +184,31 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 {
     if (reg == 0x00) {
         return send(TRANSFER_PGM, &version, sizeof(version)) >= 0;
-    } else if (reg == 0x10) {
+    } else if (reg == 0x10 || reg == 0x20) {
         uint16_t pwm_duty;
-        if (pending_tccr1a & 0b10000000) {
-            pwm_duty = OCR1A + 1;
+        if (reg == 0x10) {
+            if (pending_tccr1a & 0b10000000) {
+                pwm_duty = OCR1A + 1;
+            } else {
+                pwm_duty = 0;
+            }
         } else {
-            pwm_duty = 0;
+            if (pending_tccr1a & 0b00100000) {
+                pwm_duty = OCR1B + 1;
+            } else {
+                pwm_duty = 0;
+            }
         }
         return send(0, &pwm_duty, sizeof(pwm_duty)) >= 0;
     } else if (reg == 0x11) {
         uint16_t pwm_period = ICR1 + 1;
         return send(0, &pwm_period, sizeof(pwm_period)) >= 0;
-    } else if (reg == 0x12) {
+    } else if (reg == 0x12 || reg == 0x22) {
+        struct pulse_data *pdata = &pulse_datas[(reg - 0x12)/0x10];
         // Interrupts are disabled, so can access these without worrying about
         // atomicity
-        unsigned long delta = pulse_delta;
-        unsigned long check_time = pulse_times[pulse_index];
+        unsigned long delta = pdata->delta;
+        unsigned long check_time = pdata->times[pdata->index];
 
         uint16_t rpm;
         if (delta == 0 || micros() - check_time > 1000000) {
@@ -210,21 +232,29 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 
 bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
 {
-    if (reg == 0x10) {
+    if (reg == 0x10 || reg == 0x20) {
         // Set PWM duty high time
-        config.pwm1_duty = value;
         uint8_t new_tccr1a;
-        if (value) {
-            new_tccr1a = 0b10000010;    // COM1A[1:0] = 10, WGM1[1:0] = 10
-            OCR1A = value - 1;
+        if (reg == 0x10) {
+            config.pwm1_duty = value;
+            new_tccr1a = pending_tccr1a & 0b00111111;   // Mask off COM1A bits
+            if (value) {
+                new_tccr1a |= 0b10000000;   // COM1A[1:0] = 10
+                OCR1A = value - 1;
+            } // else set COM1A[1:0] = 00 to turn off PWM on output A
         } else {
-            // Special case for value 0: turn PWM off
-            new_tccr1a = 0b00000010;    // COM1A[1:0] = 00, WGM1[1:0] = 10
+            config.pwm2_duty = value;
+            new_tccr1a = pending_tccr1a & 0b11001111;   // Mask off COM1B bits
+            if (value) {
+                new_tccr1a |= 0b00100000;   // COM1B[1:0] = 10
+                OCR1B = value - 1;
+            } // else set COM1B[1:0] = 00 to turn off PWM on output B
         }
         if (pending_tccr1a != new_tccr1a) {
             if (value) {
+                struct pulse_data *pdata = &pulse_datas[(reg - 0x10)/0x10];
                 // Fan was not running before, so prime the stall detection
-                pulse_times[pulse_index] = micros();
+                pdata->times[pdata->index] = micros();
             }
             // TCCR1A is not double-buffered the way OCR1A is, so defer
             // update to the end of this PWM period.
@@ -288,6 +318,7 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
             config.crc = crc_bytes((uint8_t *)&config, sizeof(config) - 1);
             eeprom_update_block(&config, (uint8_t *)0, sizeof(config));
         }
+        return true;
     }
     return false;
 }
@@ -302,10 +333,14 @@ bool UsbPwmDevice::checkStall()
     bool stalled = false;
     uint8_t old_sreg = SREG;
     cli();
-    if (pending_tccr1a & 0b10000000) {
-        unsigned long check_time = pulse_times[pulse_index];
-        if (pulse_delta == 0 || micros() - check_time > 500000) {
-            stalled = true;
+    for (int i = 0; i < 2; i++) {
+        if (pending_tccr1a & (0b10000000 >> i*2)) {
+            struct pulse_data *pdata = &pulse_datas[i];
+            unsigned long delta = pdata->delta;
+            unsigned long check_time = pdata->times[pdata->index];
+            if (delta == 0 || micros() - check_time > 500000) {
+                stalled = true;
+            }
         }
     }
     SREG = old_sreg;
@@ -358,24 +393,30 @@ int UsbPwmDevice::begin(void)
         memcpy_P(&config, &default_config, sizeof(config));
     }
 
-    // Set Timer 1 to configured frequency and duty cycle
+    // Set Timer 1 to configured frequency and duty cycles
     TIMSK1 = 0;
     ICR1 = config.pwm_period - 1;
     TCCR1B = 0b00011001;    // WGM1[3:2] = 11, CS1[2:0] = 001
+    pending_tccr1a = 0b00000010;    // WGM1[1:0] = 10
     if (config.pwm1_duty) {
-        TCCR1A = pending_tccr1a = 0b10000010;   // COM1A[1:0] = 10, WGM1[1:0] = 10
+        pending_tccr1a |= 0b10000000;   // COM1A[1:0] = 10
+    }
+    if (config.pwm2_duty) {
+        pending_tccr1a |= 0b00100000;   // COM1B[1:0] = 10
+    }
+    TCCR1A = pending_tccr1a;
+    if (config.pwm1_duty) {
         OCR1A = config.pwm1_duty - 1;
-    } else {
-        // Turn PWM off for duty cycle 0
-        TCCR1A = pending_tccr1a = 0b00000010;   // COM1A[1:0] = 00, WGM1[1:0] = 10
-        OCR1A = 0;
+    }
+    if (config.pwm2_duty) {
+        OCR1B = config.pwm2_duty - 1;
     }
     TCNT1 = 0;
 
     EIMSK = 0;
-    EICRA = 0b00001100;
-    EIFR = 0b00000010;
-    EIMSK = 0b00000010;
+    EICRA = 0b00001111; // ISC0[1:0], ISC1[1:0] = 11
+    EIFR = 0b00000011;  // INTF[1:0] = 11
+    EIMSK = 0b00000011; // INT[1:0] = 11
 
     return 0;
 }
