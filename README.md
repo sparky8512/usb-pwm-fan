@@ -15,14 +15,16 @@ Most microcontrollers have hardware PWM outputs these days, so it's not particul
 
 ## Firmware
 
-The [firmware](firmware) directory has the source code for the microcontroller firmware. It uses the [AVR Arduino core](https://github.com/arduino/ArduinoCore-avr) and can be built using [PlatformIO](https://platformio.org/).
+The [firmware](firmware) directory has the source code for the microcontroller firmware. See the README file in that directory for more info if you need to build it from source instead of using one of the pre-built firmware files.
 
 ### Features
 
 The firmware currently supports the following features:
+* Supports up to 3 independently controllable fans
 * Set PWM output duty cycle (for fan speed) and period (for PWM frequency), both in units of 16MHz clock cycles
 * Get fan rotational speed in RPM (revolutions per minute)
 * Set LED state to on, off, blink, or alert mode; default is alert mode, which will blink if fan stall is detected, otherwise off
+* Ability to save current fan and LED configurations so they are restored when the USB device is rebooted
 * Initiate device reboot, either normal or into bootloader, via configuration register
 * All registers accessible via either USB control endpoint or via USB serial port
 * On Windows OS (8.1 or later), auto-install device with the WinUSB driver on first plug
@@ -47,7 +49,7 @@ In all cases, if you are using USB power, make sure you do not exceed the maximu
 
 ### Connecting the fan to the microcontroller board
 
-The firmware currently supports up to three fan connections.
+The firmware supports up to three fan connections.
 
 The first PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
 
