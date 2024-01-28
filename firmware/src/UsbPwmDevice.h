@@ -17,7 +17,7 @@ public:
     int begin(void);
     bool readRegister(uint8_t reg, int(*send)(uint8_t, const void*, int));
     bool writeRegister(uint8_t reg, uint16_t value);
-    uint8_t getLedMode() { return ledMode; }
+    uint8_t getLedMode();
     bool checkStall();
 
 protected:
@@ -25,9 +25,6 @@ protected:
     int getDescriptor(USBSetup& setup);
     bool setup(USBSetup& setup);
     uint8_t getShortName(char* name);
-
-private:
-    uint8_t ledMode;
 };
 
 extern UsbPwmDevice TheUsbPwmDevice;

@@ -14,16 +14,32 @@ namespace UsbFanPlugin_Test
     /// </summary>
     internal class Program
     {
-        static void Main(string[] args)
+        private const int InitialFanDelayMilliseconds = 250;
+        private const int FanDelayMilliseconds = 2500;
+
+        static void Main()
         {
-            if (args.Length < 1)
+            string[] args = Environment.GetCommandLineArgs();
+            if (args.Length < 2)
             {
                 Console.WriteLine("Usage:");
-                Console.WriteLine("    UsbFanControl_Test <PLUGIN_LIB_DLL_PATH>");
+                Console.WriteLine($"    {args[0]} PLUGIN_LIB_DLL_PATH [TEST_MODE]");
                 return;
             }
 
-            string path = Path.GetFullPath(args[0]);
+            string mode;
+            if (args.Length > 2)
+            {
+                mode = args[2];
+                if (mode != "hotplug")
+                {
+                    mode = "speed";
+                }
+            } else
+            {
+                mode = "speed";
+            }
+            string path = Path.GetFullPath(args[1]);
             Type pluginType = typeof(IPlugin);
 
             Assembly pluginLib = Assembly.LoadFile(path);
@@ -31,7 +47,7 @@ namespace UsbFanPlugin_Test
             {
                 if (pluginType.IsAssignableFrom(type))
                 {
-                    RunTest(type);
+                    RunTest(type, mode);
                 }
             }
         }
@@ -69,11 +85,8 @@ namespace UsbFanPlugin_Test
             }
         }
 
-        private static void TestSensors(IPluginControlSensor control, IPluginSensor sensor)
+        private static void TestSpeed(IPluginControlSensor control, IPluginSensor sensor)
         {
-            const int InitialFanDelayMilliseconds = 250;
-            const int FanDelayMilliseconds = 6000;
-
             sensor.Update();
             Console.WriteLine("    Initial tach reading: " + sensor.Value);
 
@@ -95,7 +108,38 @@ namespace UsbFanPlugin_Test
             control.Reset();
         }
 
-        private static void RunTest(Type type)
+        private static void TestHotplug(IPluginControlSensor control, IPluginSensor sensor)
+        {
+            control.Set(0.0F);
+            Thread.Sleep(InitialFanDelayMilliseconds);
+            sensor.Update();
+            Console.WriteLine("    Initial tach reading: " + sensor.Value);
+
+            Console.WriteLine("    Unplug, then press any key to continue");
+            Console.ReadKey(true);
+            control.Set(25.0F);
+            Thread.Sleep(FanDelayMilliseconds);
+            sensor.Update();
+            Console.WriteLine("    Unplugged 25% tach reading: " + sensor.Value);
+
+            Console.WriteLine("    Replug, then press any key to continue");
+            Console.ReadKey(true);
+            control.Set(50.0F);
+            Thread.Sleep(FanDelayMilliseconds);
+            sensor.Update();
+            Console.WriteLine("    Replugged 50% tach reading: " + sensor.Value);
+
+            Console.WriteLine("    Unplug, then replug, then press any key to continue");
+            Console.ReadKey(true);
+            control.Set(75.0F);
+            Thread.Sleep(FanDelayMilliseconds);
+            sensor.Update();
+            Console.WriteLine("    Un/replugged 75% tach reading: " + sensor.Value);
+
+            control.Reset();
+        }
+
+        private static void RunTest(Type type, string mode)
         {
             Console.WriteLine("Testing plugin class: " + type.FullName);
 
@@ -124,8 +168,14 @@ namespace UsbFanPlugin_Test
             int pairs = container.ControlSensors.Count < container.FanSensors.Count ? container.ControlSensors.Count : container.FanSensors.Count;
             for (int i = 0; i < pairs; i++)
             {
-                Console.WriteLine("Testing sensor pair " + i);
-                TestSensors(container.ControlSensors[i], container.FanSensors[i]);
+                Console.WriteLine($"Testing sensor pair {i} with mode '{mode}'");
+                if (mode == "speed")
+                {
+                    TestSpeed(container.ControlSensors[i], container.FanSensors[i]);
+                } else
+                {
+                    TestHotplug(container.ControlSensors[i], container.FanSensors[i]);
+                }
             }
 
             plugin.Close();

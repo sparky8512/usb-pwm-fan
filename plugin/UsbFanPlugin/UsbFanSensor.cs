@@ -7,7 +7,7 @@ namespace FanControl.UsbFan
 {
     internal class UsbFanSensor : IPluginSensor, IDisposable
     {
-        private readonly UsbDevice _dev;
+        private readonly HotplugWrapper _dev;
         private readonly IPluginLogger _logger;
 
         public string Id { get; }
@@ -16,7 +16,7 @@ namespace FanControl.UsbFan
 
         public float? Value { get; private set; }
 
-        public UsbFanSensor(UsbDevice dev, IPluginLogger _logger, string serialNumber)
+        public UsbFanSensor(HotplugWrapper dev, IPluginLogger _logger, string serialNumber)
         {
             _dev = dev;
             this._logger = _logger;
@@ -39,17 +39,11 @@ namespace FanControl.UsbFan
                     Value = (buf[1] << 8) + buf[0];
                 }
             }
+            catch (UnpluggedException) {
+                Value = float.NaN;
+            }
             catch (Win32Exception e) {
-                int code = e.NativeErrorCode;
-                if (code == Win32.ERROR_BAD_COMMAND)
-                {
-                    _logger.Log($"{Name}: unplug detected");
-                    Value = float.NaN;
-                }
-                else
-                {
-                    _logger.Log($"Error updating {Name}: {e.Message} ({code})");
-                }
+                _logger.Log($"Error updating {Name}: {e.Message} ({e.NativeErrorCode})");
             }
         }
     }

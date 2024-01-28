@@ -18,6 +18,24 @@
 // failsafe for development and should not be needed in released firmware
 //#define BOOTLOAD_ON_WATCHDOG
 
+// Work around missing general purpose LED output on Micro Pro, use the "TX"
+// LED instead. This will fight with the USB core code over the state of that
+// LED, but this is the best we can do without replacing the pins_arduino.h
+// file for that board.
+#ifdef ALT_LED_BUILTIN
+#undef LED_BUILTIN
+#define LED_BUILTIN ALT_LED_BUILTIN
+#endif
+
+// And of course that LED has to be inverted, too...
+#ifdef LED_INVERTED
+#define LED_ON LOW
+#define LED_OFF HIGH
+#else
+#define LED_ON HIGH
+#define LED_OFF LOW
+#endif
+
 #define STATE_IDLE 0
 #define STATE_READ_REGISTER 1
 #define STATE_WRITE_REGISTER 2
@@ -166,7 +184,11 @@ void setup()
 
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(9, OUTPUT);
-    pinMode(2, INPUT);
+    pinMode(10, OUTPUT);
+    pinMode(11, OUTPUT);
+    pinMode(2, INPUT_PULLUP);
+    pinMode(3, INPUT_PULLUP);
+    pinMode(16, INPUT_PULLUP);
 
     // Power off unneeded hardware units
     ADCSRA = 0;
@@ -175,9 +197,7 @@ void setup()
     PRR1 = 0b00011001;
     DIDR1 = 0b00000001;
     DIDR0 = 0b11110011;
-    DIDR2 = 0b00011111;
-
-    TheUsbPwmDevice.begin();
+    DIDR2 = 0b00111111;
 
     Serial.begin(115200);
 
@@ -191,6 +211,8 @@ void setup()
     }
     Serial.println(F("PWM Fan start"));
 #endif
+
+    TheUsbPwmDevice.begin();
 }
 
 static bool blink_state;
@@ -217,16 +239,16 @@ void loop()
         }
     }
     if (mode == LED_MODE_ON) {
-        digitalWrite(LED_BUILTIN, HIGH);
+        digitalWrite(LED_BUILTIN, LED_ON);
     } else if (mode == LED_MODE_OFF) {
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_BUILTIN, LED_OFF);
     } else if (mode == LED_MODE_BLINK) {
         if (now > next_blink) {
             if (blink_state) {
-                digitalWrite(LED_BUILTIN, LOW);
+                digitalWrite(LED_BUILTIN, LED_OFF);
                 next_blink += 140;
             } else {
-                digitalWrite(LED_BUILTIN, HIGH);
+                digitalWrite(LED_BUILTIN, LED_ON);
                 next_blink += 10;
             }
             blink_state = !blink_state;

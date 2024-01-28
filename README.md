@@ -15,23 +15,25 @@ Most microcontrollers have hardware PWM outputs these days, so it's not particul
 
 ## Firmware
 
-The [firmware](firmware) directory has the source code for the microcontroller firmware. It uses the [AVR Arduino core](https://github.com/arduino/ArduinoCore-avr) and can be built using [PlatformIO](https://platformio.org/).
+The [firmware](firmware) directory has the source code for the microcontroller firmware. See the README file in that directory for more info if you need to build it from source instead of using one of the pre-built firmware files.
 
 ### Features
 
 The firmware currently supports the following features:
+* Supports up to 3 independently controllable fans
 * Set PWM output duty cycle (for fan speed) and period (for PWM frequency), both in units of 16MHz clock cycles
 * Get fan rotational speed in RPM (revolutions per minute)
 * Set LED state to on, off, blink, or alert mode; default is alert mode, which will blink if fan stall is detected, otherwise off
+* Ability to save current fan and LED configurations so they are restored when the USB device is rebooted
 * Initiate device reboot, either normal or into bootloader, via configuration register
 * All registers accessible via either USB control endpoint or via USB serial port
 * On Windows OS (8.1 or later), auto-install device with the WinUSB driver on first plug
 
 ### Supported microcontroller hardware
 
-The firmware currently targets the Atmel (Microchip) [ATmega32U4](https://www.microchip.com/en-us/product/ATmega32U4) AVR microcontroller, and should work without modification on any microcontroller board module that claims to be compatible with [Arduino Leonardo](https://docs.arduino.cc/hardware/leonardo) or (to be added soon) [Sparkfun Pro Micro](https://www.sparkfun.com/products/12640) development boards. Clones of these boards can be found for cheap at many online retailers. These boards have USB connectors on them so they can be connected to a PC easily and generally have a number of IO lines that can be wired up to external hardware.
+The firmware currently targets the Atmel (Microchip) [ATmega32U4](https://www.microchip.com/en-us/product/ATmega32U4) AVR microcontroller, and should work without modification on any microcontroller board module that claims to be compatible with [Arduino Leonardo](https://docs.arduino.cc/hardware/leonardo) or [Sparkfun Pro Micro](https://www.sparkfun.com/products/12640) development boards. Clones of these boards can be found for cheap at many online retailers. These boards have USB connectors on them so they can be connected to a PC easily and generally have a number of IO lines that can be wired up to external hardware.
 
-Other ATmega32U4-based boards may work, too, although getting the LED output to work may require building from source instead of using the pre-built firmware files. Also, unless the board runs its microcontroller with 5V power supply, additional hardware components will be required to drive the fan's PWM input. The remainder of this document assumes the microcontroller is running with 5V.
+Other ATmega32U4-based boards may work, too, although getting the LED output to work may require building from source instead of using the pre-built firmware files. Also, unless the board runs its microcontroller with 5V power supply, additional hardware components may be required to drive the fan's PWM input. The remainder of this document assumes the microcontroller is running with 5V.
 
 ### Supported fans
 
@@ -47,11 +49,11 @@ In all cases, if you are using USB power, make sure you do not exceed the maximu
 
 ### Connecting the fan to the microcontroller board
 
-The firmware currently only supports a single fan connection.
+The firmware supports up to three fan connections.
 
-Its PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
+The first PWM output is on pin PB5, which is normally labelled `D9` on microcontroller boards. This must be connected to the PWM input pin on the fan connector. This is the pin at the end of the connector outside the notches and fans usually have a blue wire going to this pin on the connector.
 
-The tachometer input is on pin PD1, which is normally labelled `D2` or `SDA` on microcontroller boards. This must be connected to the tachometer (sometimes labelled as "sense") output on the fan connector. This is the next pin down from the PWM input and fans usually have a green wire going to this pin on the connector, but it could also be yellow if the wire for power is red. You must also connect a 10K resistor between this pin and `+5V` (sometimes labelled `Vcc`). Without this pull-up resistor, the firmware will not be able to read the rotational speed.
+The first tachometer input is on pin PD1, which is normally labelled `D2` or `SDA` on microcontroller boards. This must be connected to the tachometer (sometimes labelled as "sense") output on the fan connector. This is the next pin down from the PWM input and fans usually have a green wire going to this pin on the connector, but it could also be yellow if the wire for power is red. You must also connect a 10K resistor between this pin and `+5V` (sometimes labelled `Vcc`). Without this pull-up resistor, the firmware will not be able to read the rotational speed.
 
 Power and ground lines must also be connected to the fan:
 
@@ -59,11 +61,17 @@ If you are using USB (5V) to power the fan, this will be usually be labelled `+5
 
 Finally, connect `GND` (Ground) from your microcontroller board to the ground pin on the fan connector. This is is the pin on the opposite end of the connector from the PWM input, will be inside the notches, and fans almost always have a black wire going to this pin on the connector.
 
+If you have a second fan to connect, its PWM output is on pin PB6, which is normally labelled `D10`, and its tachometer input is on pin PD0, which is normally labelled `D3` or `SCL`. Otherwise, follow the above directions, including connecting power and ground.
+
+If you have a third fan to connect, its PWM output is on pin PB7, which is normally labelled `D11`, and its tachometer input is on pin PB2, which is normally labelled `D16`, `MOSI`, or just `MO`. Otherwise, follow the above directions, including connecting power and ground.
+
+Note that most boards will not have all these pins available for connection. It's OK to connect just the PWM output or just the tachometer input for a fan if that's all the functionality you need for that fan. It's also OK to skip the earlier fan connections if only the later ones have pins available.
+
 **Be very careful** not to connect the wires wrong. PC motherboard fan headers are keyed to the notches on the connector in order to prevent plugging the fan in backwards or off center. If you are using a bare 4-pin header to connect the fan you won't have that protection. Connecting the fan wrong can easily fry the fan, and if using 12V can also fry your microcontroller board or even the USB port on your PC. If in doubt, do a web search for "4-pin fan header pinout" and look for pictures that show how the fan notches line up with the wires for PWM, tach, power, and ground.
 
 ### Uploading the firmware
 
-Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board. There are currently files for 3 different board types: `beetle`, `leonardo`, and `promicro16`. If your board has "Pro Micro" printed on it, it's probably a Sparkfun Pro Micro clone; otherwise, it's probably closer to Leonardo. The Beetle firmware is the same as the Leonardo firmware except it uses the [DFRobot Beetle](https://www.dfrobot.com/product-1075.html) VID/PID in its USB descriptors. I'm pretty sure the only significant difference is the configuration of the LED pins. Only 16MHz board firmwares are currently being built.
+Pre-built firmware files can be found in the [Releases](https://github.com/sparky8512/usb-pwm-fan/releases) section of this repository. You'll need to pull out the `.hex` file that is appropriate for your development board. There are currently files for 3 different board types: `beetle`, `leonardo`, and `promicro16`. If your board has "Pro Micro" printed on it, it's probably a Sparkfun Pro Micro clone; otherwise, it's probably closer to Leonardo. The Beetle firmware is the same as the Leonardo firmware except it uses the [DFRobot Beetle](https://www.dfrobot.com/product-1075.html) VID/PID in its USB descriptors. I'm pretty sure the only significant hardware difference among any of these boards is the configuration of the LED pins. Only 16MHz board firmwares are currently being built.
 
 Once you have a firmware file to upload, you can use the `atmega32u4_upload.py` tool to upload it if your board is not already running firmware from this project. If your board is already running firmware from this project, you can use either that tool or the `upload` command of the `usb_fan_config.py` tool. See details for those tools below.
 
@@ -105,9 +113,22 @@ There are 4 main operating modes for this script:
 
 If your development board uses a different bootloader than Caterina, you will need to use an upload tool specific to that bootloader.
 
+### safe_removal_config.py
+
+`safe_removal_config.py` is a Windows-specific device installation helper that can be used to remove a USB Fan device from the list of USB devices in the "Safely Remove Hardware" menu (the tray icon that looks like a USB plug).
+
+While USB Fan devices should be usable without any special driver installation, at least on Linux or Windows, the WinUSB driver that Windows auto-configures for it will always put devices in that menu. This tool can be used to override that behavior.
+
+For full usage details, you can run:
+```shell script
+python safe_removal_config.py --help
+```
+
 ## FanControl plugin
 
 The [plugin](plugin) directory has the source code for a plugin to Rémi Mercier's [Fan Control](https://getfancontrol.com/) program that will allow it to access fans connected to USB devices running this project's firmware. Note that this is a Windows-only application.
+
+This plugin currently only supports the first fan (the one connected on pins `D9` and `D2`) per USB device.
 
 ### Installation
 
@@ -117,17 +138,18 @@ To install the plugin, place the file `FanControl.UsbFanPlugin.dll` into the `Pl
 
 ## Project TODO list
 
-Things that may happen at some point of the future:
+Things that may happen at some point of the future, but for which no work is currently planned:
 * Better documentation... *much* better documentation
 * ~~Python script for configuration and status~~
 * ~~Python script for firmware upload~~
 * ~~Workflow actions for builds~~
 * Firmware features
-  * Extend for multiple fans
-  * Save default configuration to EEPROM, restore on boot
+  * ~~Extend for multiple fans~~
+  * ~~Save default configuration to EEPROM, restore on boot~~
   * Allow software configuration of which GPIO to use for LED output
   * Allow change serial number via software configuration
   * Allow disable serial port interface via software configuration
   * Add read of microcontroller temperature and voltage
 * FanControl plugin features
-  * Handle hot unplug/replug better
+  * ~~Handle hot unplug/replug better~~
+  * Handle multiple fans per USB device

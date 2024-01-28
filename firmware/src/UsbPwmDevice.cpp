@@ -11,8 +11,12 @@
 #include "USBDesc.h"
 
 #include <avr/boot.h>
+#include <avr/eeprom.h>
+#include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
+
+#include <util/crc16.h>
 
 #if ISERIAL_MAX_LEN >= 10 * 8/5
 #define SERIAL_BYTES (10 * 8/5)
@@ -20,7 +24,44 @@
 #define SERIAL_BYTES ISERIAL_MAX_LEN
 #endif
 
+#define NUM_FANS 3
 #define NUM_PULSE_TIMES 16
+
+#define CONFIG_STRUCT_REV 3
+
+struct config_data {
+    uint8_t struct_rev; // keep this first, bump by 1 for each rev, 0 and 255 reserved as blanked/unprogrammed
+    uint8_t led_mode;
+    uint16_t pwm_period;
+    uint16_t pwm1_duty;
+    uint16_t pwm2_duty;
+    uint16_t pwm3_duty;
+    uint8_t crc;        // keep this last
+}  __attribute__((packed));
+
+static const struct config_data default_config PROGMEM = {
+  /* struct_rev */  CONFIG_STRUCT_REV,
+  /* led_mode */    LED_MODE_AUTO,
+  /* pwm_period */  640,    // 640 clock cycles is 25KHz
+  /* pwm1_duty */   0,
+  /* pwm2_duty */   0,
+  /* pwm3_duty */   0,
+  /* crc */         0       // dummy value, will be recomputed when writing
+};
+
+static struct config_data config;
+
+#define crc8 _crc8_ccitt_update
+
+static inline uint8_t crc_bytes(const uint8_t* bytes, uint8_t n)
+{
+  uint8_t crc = 0xff;
+  while (n--) {
+    crc = crc8(crc, *bytes++);
+  }
+
+  return crc;
+}
 
 static uint8_t pending_tccr1a;
 
@@ -30,23 +71,41 @@ ISR(TIMER1_OVF_vect)
     TIMSK1 = 0;
 }
 
-static uint8_t pulse_index;
-static unsigned long pulse_times[NUM_PULSE_TIMES];
-static volatile unsigned long last_pulse;
-static volatile unsigned long pulse_delta;
+struct pulse_data {
+    uint8_t index;
+    unsigned long times[NUM_PULSE_TIMES];
+    volatile unsigned long delta;
+};
+static struct pulse_data pulse_datas[NUM_FANS];
+
+static void pulse_interrupt(struct pulse_data *pdata)
+{
+    uint8_t i = (pdata->index + 1) % NUM_PULSE_TIMES;
+    pdata->index = i;
+    unsigned long old_time = pdata->times[i];
+    unsigned long new_time = micros();
+    pdata->times[i] = new_time;
+    pdata->delta = new_time - old_time;
+}
+
+ISR(INT0_vect)
+{
+    pulse_interrupt(&pulse_datas[1]);
+}
 
 ISR(INT1_vect)
 {
-    uint8_t i = (pulse_index + 1) % NUM_PULSE_TIMES;
-    pulse_index = i;
-    unsigned long old_time = pulse_times[i];
-    unsigned long new_time = micros();
-    last_pulse = new_time;
-    pulse_times[i] = new_time;
-    pulse_delta = new_time - old_time;
+    pulse_interrupt(&pulse_datas[0]);
 }
 
-UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL), ledMode(0)
+ISR(PCINT0_vect)
+{
+    if (PINB & 0b00000100) {
+        pulse_interrupt(&pulse_datas[2]);
+    }
+}
+
+UsbPwmDevice::UsbPwmDevice(void) : PluggableUSBModule(0, 1, NULL)
 {
     PluggableUSB().plug(this);
 }
@@ -59,8 +118,8 @@ int UsbPwmDevice::getInterface(uint8_t* interfaceCount)
     return USB_SendControl(0, &iface, sizeof(iface));
 }
 
-#define VERSION_MAJOR 0
-#define VERSION_MINOR 1
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 0
 static const uint8_t version[2] PROGMEM = { VERSION_MINOR, VERSION_MAJOR };
 
 //
@@ -135,10 +194,11 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 {
     if (reg == 0x00) {
         return send(TRANSFER_PGM, &version, sizeof(version)) >= 0;
-    } else if (reg == 0x10) {
+    } else if (reg == 0x10 || reg == 0x20 || reg == 0x30) {
+        int ifan = (reg - 0x10) / 0x10;
         uint16_t pwm_duty;
-        if (pending_tccr1a & 0b10000000) {
-            pwm_duty = OCR1A + 1;
+        if (pending_tccr1a & (0b10000000 >> ifan*2)) {
+            pwm_duty = *(&OCR1A + ifan) + 1;
         } else {
             pwm_duty = 0;
         }
@@ -146,11 +206,12 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
     } else if (reg == 0x11) {
         uint16_t pwm_period = ICR1 + 1;
         return send(0, &pwm_period, sizeof(pwm_period)) >= 0;
-    } else if (reg == 0x12) {
+    } else if (reg == 0x12 || reg == 0x22 || reg == 0x32) {
+        struct pulse_data *pdata = &pulse_datas[(reg - 0x12)/0x10];
         // Interrupts are disabled, so can access these without worrying about
         // atomicity
-        unsigned long delta = pulse_delta;
-        unsigned long check_time = pulse_times[pulse_index];
+        unsigned long delta = pdata->delta;
+        unsigned long check_time = pdata->times[pdata->index];
 
         uint16_t rpm;
         if (delta == 0 || micros() - check_time > 1000000) {
@@ -158,11 +219,16 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
             rpm = 0;
         } else {
             // 2 pulses per revolution
-            rpm = (unsigned long)60000000*(NUM_PULSE_TIMES/2)/delta;
+            unsigned long ulong_rpm = (unsigned long)60000000*(NUM_PULSE_TIMES/2)/delta;
+            if (ulong_rpm > 0xffff) {
+                rpm = 0xffff;
+            } else {
+                rpm = ulong_rpm;
+            }
         }
         return send(0, &rpm, sizeof(rpm)) >= 0;
     } else if (reg == 0xf1) {
-        uint16_t mode = ledMode;
+        uint16_t mode = config.led_mode;
         return send(0, &mode, sizeof(mode)) >= 0;
     } else if (reg == 0xf8) {
         char buf[SERIAL_BYTES];
@@ -174,20 +240,21 @@ bool UsbPwmDevice::readRegister(uint8_t reg, int(*send)(uint8_t, const void*, in
 
 bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
 {
-    if (reg == 0x10) {
+    if (reg == 0x10 || reg == 0x20 || reg == 0x30) {
         // Set PWM duty high time
+        int ifan = (reg - 0x10) / 0x10;
         uint8_t new_tccr1a;
+        *(&config.pwm1_duty + ifan) = value;
+        new_tccr1a = pending_tccr1a & ~(0b11000000 >> ifan*2);  // Mask off COM1x bits
         if (value) {
-            new_tccr1a = 0b10000010;    // COM1A[1:0] = 10, WGM1[1:0] = 10
-            OCR1A = value - 1;
-        } else {
-            // Special case for value 0: turn PWM off
-            new_tccr1a = 0b00000010;    // COM1A[1:0] = 00, WGM1[1:0] = 10
-        }
+            new_tccr1a |= 0b10000000 >> ifan*2; // COM1x[1:0] = 10
+            *(&OCR1A + ifan) = value - 1;
+        } // else leave COM1x[1:0] = 00 to turn off PWM on output
         if (pending_tccr1a != new_tccr1a) {
             if (value) {
+                struct pulse_data *pdata = &pulse_datas[ifan];
                 // Fan was not running before, so prime the stall detection
-                pulse_times[pulse_index] = micros();
+                pdata->times[pdata->index] = micros();
             }
             // TCCR1A is not double-buffered the way OCR1A is, so defer
             // update to the end of this PWM period.
@@ -198,6 +265,7 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
         return true;
     } else if (reg == 0x11) {
         // Set PWM period time
+        config.pwm_period = value;
         ICR1 = value - 1;
         TCNT1 = 0;
         return true;
@@ -214,6 +282,11 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
         } else if (value == 3) {
             // Reboot into bootloader
             key = MAGIC_KEY;
+        } else if (value == 4) {
+            // Reset default config to factory default
+            eeprom_update_byte((uint8_t *)0, 0xff);
+            // and then do regular reboot
+            key = 0x0000;
         } else if (value == 255) {
             // Watchdog test
         } else {
@@ -235,11 +308,25 @@ bool UsbPwmDevice::writeRegister(uint8_t reg, uint16_t value)
     } else if (reg == 0xf1) {
         // LED control
         if (value <= LED_MODE_MAX) {
-            ledMode = (uint8_t)value;
+            config.led_mode = (uint8_t)value;
         }
+        return true;
+    } else if (reg == 0xf2) {
+        // Configuration control
+        if (value == 1) {
+            // Persist current config
+            config.crc = crc_bytes((uint8_t *)&config, sizeof(config) - 1);
+            eeprom_update_block(&config, (uint8_t *)0, sizeof(config));
+        }
+        // all other values are currently reserved
         return true;
     }
     return false;
+}
+
+uint8_t UsbPwmDevice::getLedMode()
+{
+    return config.led_mode;
 }
 
 bool UsbPwmDevice::checkStall()
@@ -247,10 +334,14 @@ bool UsbPwmDevice::checkStall()
     bool stalled = false;
     uint8_t old_sreg = SREG;
     cli();
-    if (pending_tccr1a & 0b10000000) {
-        unsigned long check_time = pulse_times[pulse_index];
-        if (pulse_delta == 0 || micros() - check_time > 500000) {
-            stalled = true;
+    for (int i = 0; i < NUM_FANS; i++) {
+        if (pending_tccr1a & (0b10000000 >> i*2)) {
+            struct pulse_data *pdata = &pulse_datas[i];
+            unsigned long delta = pdata->delta;
+            unsigned long check_time = pdata->times[pdata->index];
+            if (delta == 0 || micros() - check_time > 500000) {
+                stalled = true;
+            }
         }
     }
     SREG = old_sreg;
@@ -297,18 +388,47 @@ uint8_t UsbPwmDevice::getShortName(char *name)
 
 int UsbPwmDevice::begin(void)
 {
-    // Configure Timer 1 for 25KHz PWM, start with output off (0% duty cycle)
+    eeprom_read_block(&config, (uint8_t *)0, sizeof(config));
+    if (config.struct_rev != CONFIG_STRUCT_REV ||
+        crc_bytes((uint8_t *)&config, sizeof(config)) != 0) {
+        memcpy_P(&config, &default_config, sizeof(config));
+    }
+
+    // Set Timer 1 to configured frequency and duty cycles
     TIMSK1 = 0;
-    ICR1 = 639;
-    OCR1A = 0;
-    TCNT1 = 0;
-    TCCR1A = pending_tccr1a = 0b00000010;    // COM1A[1:0] = 00, WGM1[1:0] = 10
+    ICR1 = config.pwm_period - 1;
     TCCR1B = 0b00011001;    // WGM1[3:2] = 11, CS1[2:0] = 001
+    pending_tccr1a = 0b00000010;    // WGM1[1:0] = 10
+    if (config.pwm1_duty) {
+        pending_tccr1a |= 0b10000000;   // COM1A[1:0] = 10
+    }
+    if (config.pwm2_duty) {
+        pending_tccr1a |= 0b00100000;   // COM1B[1:0] = 10
+    }
+    if (config.pwm3_duty) {
+        pending_tccr1a |= 0b00001000;   // COM1C[1:0] = 10
+    }
+    TCCR1A = pending_tccr1a;
+    if (config.pwm1_duty) {
+        OCR1A = config.pwm1_duty - 1;
+    }
+    if (config.pwm2_duty) {
+        OCR1B = config.pwm2_duty - 1;
+    }
+    if (config.pwm3_duty) {
+        OCR1C = config.pwm3_duty - 1;
+    }
+    TCNT1 = 0;
 
     EIMSK = 0;
-    EICRA = 0b00001100;
-    EIFR = 0b00000010;
-    EIMSK = 0b00000010;
+    EICRA = 0b00001111; // ISC0[1:0], ISC1[1:0] = 11
+    EIFR = 0b00000011;  // INTF[1:0] = 11
+    EIMSK = 0b00000011; // INT[1:0] = 11
+
+    PCICR = 0;
+    PCIFR = 1;
+    PCMSK0 = 0b00000100;    // PCINT2 = 1
+    PCICR = 1;
 
     return 0;
 }

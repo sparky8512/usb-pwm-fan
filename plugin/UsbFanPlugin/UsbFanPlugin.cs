@@ -10,8 +10,8 @@ namespace FanControl.UsbFan
     public class UsbFanPlugin: IPlugin
     {
         private static readonly Guid FanInterfaceGuid = new Guid(0x1ad9f93b, 0x494c, 0x4dda, 0xa1, 0xe5, 0x2e, 0x2b, 0xab, 0x18, 0x10, 0x52);
-        private const byte DeviceVersionMajor = 0;
-        private const byte DeviceVersionMinor = 1;
+        private const byte DeviceVersionMajor = 1;
+        private const byte DeviceVersionMinor = 0;
 
         private readonly IPluginLogger _logger;
         private readonly IPluginDialog _dialog;
@@ -47,10 +47,9 @@ namespace FanControl.UsbFan
             {
                 return false;
             }
-            // For pre-release, insist on exact minor version match
-            if (buf[1] != DeviceVersionMajor || buf[0] != DeviceVersionMinor)
+            if (buf[1] != DeviceVersionMajor || buf[0] < DeviceVersionMinor)
             {
-                _logger.Log($"Found USB fan device, but incompatible firware revision: {buf[1]}, {buf[0]}");
+                _logger.Log($"Found USB fan device, but incompatible firmware revision: {buf[1]}, {buf[0]}");
                 return false;
             }
 
@@ -59,22 +58,23 @@ namespace FanControl.UsbFan
 
         public void Initialize()
         {
-            UsbDevice.EnumerateDevices(in FanInterfaceGuid, (UsbDevice device) =>
+            UsbDevice.EnumerateDevices(in FanInterfaceGuid, (UsbDevice usbDevice) =>
             {
                 try
                 {
-                    string serialNumber = device.GetSerialNumber();
+                    string serialNumber = usbDevice.GetSerialNumber();
                     if (serialNumber == null) {
-                        _logger.Log($"Error getting serial number from USB fan device {device.Name}");
+                        _logger.Log($"Error getting serial number from USB fan device {usbDevice.Name}");
                         return false;
                     }
 
-                    bool rv = CheckVersion(device);
+                    bool rv = CheckVersion(usbDevice);
                     if (!rv) {
                         _logger.Log($"Error checking version for USB fan device {serialNumber}");
                         return false;
                     }
 
+                    HotplugWrapper device = new HotplugWrapper(usbDevice, _logger, in FanInterfaceGuid, serialNumber);
                     UsbFanControl control = new UsbFanControl(device, _logger, serialNumber);
                     if (control.Initialize())
                     {
@@ -87,7 +87,7 @@ namespace FanControl.UsbFan
                 catch (Win32Exception e)
                 {
                     // This can happen if, for example, the device is unplugged in the middle
-                    _logger.Log($"Error enumerating USB fan device {device.Name}: {e.Message} ({e.NativeErrorCode})");
+                    _logger.Log($"Error enumerating USB fan device {usbDevice.Name}: {e.Message} ({e.NativeErrorCode})");
                     return false;
                 }
             });
