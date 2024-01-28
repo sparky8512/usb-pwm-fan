@@ -64,6 +64,10 @@ class FanDevice(abc.ABC):
     def write_register(self, reg, value):
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def version_ok(self):
+        raise NotImplementedError()
+
     def set_speed(self, speed, index):
         """Set fan speed (PWM duty cycle).
 
@@ -160,20 +164,26 @@ class SerialFanDevice(FanDevice):
             if not buf or buf[0] == ord("\n"):
                 break
 
+    def version_ok(self):
+        return True
+
 
 class UsbFanDevice(FanDevice):
     """Direct USB control of a USB fan device."""
 
-    def __init__(self, device, interface):
+    def __init__(self, device, interface, major, minor):
         self._dev = device
         self._iface = interface
+        self._version_major = major
+        self._version_minor = minor
+
+    def _version_str(self):
+        return "{}.{}".format(self._version_major, self._version_minor)
 
     def __str__(self):
-        return "{:04x}:{:04x} {:02x} {:3d} {:4d} {:4d} {}".format(self._dev.idVendor,
-                                                                  self._dev.idProduct, self._iface,
-                                                                  self._dev.bus, self._dev.address,
-                                                                  self._dev.port_number,
-                                                                  self._dev.serial_number)
+        return "{:04x}:{:04x} {:02x} {:3d} {:4d} {:4d} {:>5} {}".format(
+            self._dev.idVendor, self._dev.idProduct, self._iface, self._dev.bus, self._dev.address,
+            self._dev.port_number, self._version_str(), self._dev.serial_number)
 
     def read_register(self, reg, length):
         data = bytes(self._dev.ctrl_transfer(0xC1, reg, 0, self._iface, length))
@@ -185,6 +195,19 @@ class UsbFanDevice(FanDevice):
 
     def write_register(self, reg, value):
         self._dev.ctrl_transfer(0x41, reg, value, self._iface, 0)
+
+    def version_ok(self):
+        if self._version_major != DEVICE_MAJOR:
+            print("Device '{}' interface version major mismatch: {} vs {}.{}; "
+                  "firmware needs update.".format(self._dev.serial_number, self._version_str(),
+                                                  DEVICE_MAJOR, DEVICE_MINOR))
+            return False
+        if self._version_minor < DEVICE_MINOR:
+            print("Device '{}' interface version minor insufficient: {} < {}.{}; "
+                  "firmware needs update.".format(self._dev.serial_number, self._version_str(),
+                                                  DEVICE_MAJOR, DEVICE_MINOR))
+            return False
+        return True
 
 
 class FanDeviceRebooter:
@@ -245,9 +268,9 @@ def find_fan_devs(index=None):
     devs = usb_module.find(find_all=1, custom_match=UuidFinder(DEVICE_UUID))
     for dev in devs:
         for data in dev.uuid_finder_data:
-            if len(data) >= 3 and data[1] == DEVICE_MAJOR and data[0] >= DEVICE_MINOR:
+            if len(data) >= 3:
                 if index is None or index == found:
-                    fan_devs.append(UsbFanDevice(dev, data[2]))
+                    fan_devs.append(UsbFanDevice(dev, data[2], data[1], data[0]))
                 if index == found:
                     break
             found += 1
@@ -279,7 +302,7 @@ def led_command(dev, opts):
     dev.set_led_mode(opts.mode)
 
 
-def save_command(dev, opts):
+def save_command(dev, opts):  # pylint: disable=unused-argument
     dev.save_config()
 
 
@@ -307,7 +330,8 @@ def upload_command(dev, opts):
 def parse_args():
     parser = argparse.ArgumentParser(description="USB fan device configuration")
     parser.add_argument("-i", "--index", type=int, help="0-based index of device to use")
-    parser.add_argument("-f", "--fan-index",
+    parser.add_argument("-f",
+                        "--fan-index",
                         type=int,
                         default=0,
                         help="0-based index of fan to use on device; default is 0")
@@ -323,48 +347,48 @@ def parse_args():
     command_parsers = parser.add_subparsers(required=True)
 
     subparser = command_parsers.add_parser("list", help="List attached fan devices")
-    subparser.set_defaults(command_func=list_command, header=True)
+    subparser.set_defaults(command_func=list_command, header=True, version_check=False)
 
     subparser = command_parsers.add_parser("set", help="Set fan speed")
     subparser.add_argument("speed", type=float, help="Fan speed, in percent", metavar="SPEED")
-    subparser.set_defaults(command_func=set_command, header=False)
+    subparser.set_defaults(command_func=set_command, header=False, version_check=True)
 
     subparser = command_parsers.add_parser("get", help="Get current fan speed, in RPM")
-    subparser.set_defaults(command_func=get_command, header=True)
+    subparser.set_defaults(command_func=get_command, header=True, version_check=True)
 
     subparser = command_parsers.add_parser("set_frequency", help="Set PWM frequency")
     subparser.add_argument("freq", type=float, help="Frequency, in Hz", metavar="FREQ")
-    subparser.set_defaults(command_func=set_frequency_command, header=False)
+    subparser.set_defaults(command_func=set_frequency_command, header=False, version_check=True)
 
     subparser = command_parsers.add_parser("get_frequency", help="Get PWM frequency, in Hz")
-    subparser.set_defaults(command_func=get_frequency_command, header=True)
+    subparser.set_defaults(command_func=get_frequency_command, header=True, version_check=True)
 
     subparser = command_parsers.add_parser("led", help="Set LED mode")
     subparser.add_argument("mode", choices=LED_MODES, help="The mode to set")
-    subparser.set_defaults(command_func=led_command, header=False)
+    subparser.set_defaults(command_func=led_command, header=False, version_check=True)
 
     subparser = command_parsers.add_parser("save", help="Persist configuration across device reset")
-    subparser.set_defaults(command_func=save_command, header=False)
+    subparser.set_defaults(command_func=save_command, header=False, version_check=True)
 
     subparser = command_parsers.add_parser("reset", help="Reset device")
     subparser.add_argument("--mode",
                            choices=RESET_MODES,
                            default="reboot",
                            help="Reset mode to use; default is reboot")
-    subparser.set_defaults(command_func=reset_command, header=False)
+    subparser.set_defaults(command_func=reset_command, header=False, version_check=True)
 
     subparser = command_parsers.add_parser("write_register", help="Write value to register")
     subparser.add_argument("register", type=int, help="Register number to write", metavar="REG")
     subparser.add_argument("value", help="Value or data to write", metavar="VALUE")
-    subparser.set_defaults(command_func=write_register_command, header=False)
+    subparser.set_defaults(command_func=write_register_command, header=False, version_check=False)
 
     subparser = command_parsers.add_parser("read_register", help="Read register value")
     subparser.add_argument("register", type=int, help="Register number to read", metavar="REG")
-    subparser.set_defaults(command_func=read_register_command, header=True)
+    subparser.set_defaults(command_func=read_register_command, header=True, version_check=False)
 
     subparser = command_parsers.add_parser("upload", help="Upload firmware to device")
     atmega32u4_upload.argparse_core_args(subparser)
-    subparser.set_defaults(command_func=upload_command, header=False)
+    subparser.set_defaults(command_func=upload_command, header=False, version_check=False)
 
     opts = parser.parse_args()
 
@@ -401,18 +425,26 @@ def main():
             sys.exit("Error opening serial port: " + str(ex))
         opts.command_func(dev, opts)
     else:
+
+        def check_and_run(dev, opts):
+            if opts.version_check:
+                if not dev.version_ok():
+                    # output is done in version_ok
+                    return
+            opts.command_func(dev, opts)
+
         devs = find_fan_devs(index=opts.index)
         if not devs:
             print("No USB fan device found")
         elif len(devs) == 1 and not opts.all and opts.command_func != list_command:  # pylint: disable=comparison-with-callable
-            opts.command_func(devs[0], opts)
+            check_and_run(devs[0], opts)
         else:
             if opts.header:
-                print(" VID  PID IF Bus Addr Port SerialNumber")
+                print(" VID  PID IF Bus Addr Port IfVer SerialNumber")
             for dev in devs:
                 if opts.header and opts.command_func != list_command:  # pylint: disable=comparison-with-callable
                     print("{!s:<47}: ".format(dev), end="")
-                opts.command_func(dev, opts)
+                check_and_run(dev, opts)
 
     sys.exit(0)
 
